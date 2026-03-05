@@ -16,7 +16,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,9 +29,16 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.flame.ui.theme.FlameTheme
-import java.util.Calendar
+import java.util.*
 
-// --- COULEURS DU DESIGN FLAME ---
+
+data class Tache(
+    val titre: String,
+    val dateDebut: Long,
+    val dateFin: Long
+)
+
+// Design global du projet
 val FlameBackground = Color(0xFF1A0033)
 val FlameCard = Color(0xFF2E004B)
 val FlamePurple = Color(0xFF9D00FF)
@@ -43,28 +49,25 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             FlameTheme {
-                // La Surface garantit que le fond n'est pas noir et occupe tout l'écran
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = FlameBackground
-                ) {
+                Surface(modifier = Modifier.fillMaxSize(), color = FlameBackground) {
                     val navController = rememberNavController()
-                    // Liste d'état pour simuler les données du diagramme
-                    val taches = remember {
-                        mutableStateListOf("Morning routine", "Work out", "Reading")
-                    }
+                    val taches = remember { mutableStateListOf<Tache>() }
+
+                    // Tri des tâches du plus tôt au plus tard
+                    val tachesTriees = taches.sortedBy { it.dateDebut }
 
                     NavHost(navController = navController, startDestination = "liste") {
                         composable("liste") {
-                            EcranListeTaches(
-                                taches = taches,
+                            ListeTaches(
+                                taches = tachesTriees,
                                 onNavigateToAdd = { navController.navigate("ajout") }
                             )
                         }
                         composable("ajout") {
-                            EcranAjoutTache(
-                                onTaskCreated = { nouveauTitre ->
-                                    taches.add(nouveauTitre)
+                            AjoutTache(
+                                onTaskCreated = { nouveauTitre, timestamp ->
+                                    // On crée la tâche avec début et fin (durée de la tâche à 1h par défaut)
+                                    taches.add(Tache(nouveauTitre, timestamp, timestamp + 3600000))
                                     navController.popBackStack()
                                 },
                                 onBack = { navController.popBackStack() }
@@ -77,50 +80,38 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// --- ÉCRAN 1 : LISTE DES TÂCHES ---
 @Composable
-fun EcranListeTaches(taches: List<String>, onNavigateToAdd: () -> Unit) {
+fun ListeTaches(taches: List<Tache>, onNavigateToAdd: () -> Unit) {
     Scaffold(
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = onNavigateToAdd,
-                containerColor = FlamePurple,
-                shape = RoundedCornerShape(50.dp)
-            ) {
+            FloatingActionButton(onClick = onNavigateToAdd, containerColor = FlamePurple, shape = RoundedCornerShape(50.dp)) {
                 Icon(Icons.Default.Add, contentDescription = "Ajouter", tint = Color.White)
             }
         },
         containerColor = FlameBackground
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .padding(24.dp)
-        ) {
-            Text(
-                text = "Bonjour 2pac 👋",
-                color = Color.White,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold
-            )
+        Column(modifier = Modifier.padding(padding).fillMaxSize().padding(24.dp)) {
+            Text("Bonjour 2pac 👋", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(32.dp))
-            Text("Vos tâches", color = Color.White, fontSize = 20.sp)
+            Text("Vos tâches (Triées par heure)", color = Color.White, fontSize = 20.sp)
 
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.padding(top = 16.dp)
-            ) {
-                items(taches) { item ->
-                    Button(
-                        onClick = { /* Action au clic */ },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(60.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = FlameCard),
-                        shape = RoundedCornerShape(25.dp)
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 16.dp)) {
+                items(taches) { tache ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth().height(60.dp),
+                        shape = RoundedCornerShape(25.dp),
+                        colors = CardDefaults.cardColors(containerColor = FlameCard)
                     ) {
-                        Text(item, color = Color.White, fontSize = 16.sp)
+                        Row(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(tache.titre, color = Color.White, modifier = Modifier.weight(1f))
+
+                            val cal = Calendar.getInstance().apply { timeInMillis = tache.dateDebut }
+                            Text(
+                                text = String.format("%02d:%02d", cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE)),
+                                color = Color.LightGray,
+                                fontSize = 14.sp
+                            )
+                        }
                     }
                 }
             }
@@ -128,136 +119,57 @@ fun EcranListeTaches(taches: List<String>, onNavigateToAdd: () -> Unit) {
     }
 }
 
-// --- ÉCRAN 2 : CRÉER UNE TÂCHE ---
 @Composable
-fun EcranAjoutTache(onTaskCreated: (String) -> Unit, onBack: () -> Unit) {
-    // États correspondants aux attributs du diagramme UML
-    var titre by remember { mutableStateOf("") }       // nom_tache
-    var description by remember { mutableStateOf("") } // description
-    var touteLaJournee by remember { mutableStateOf(false) }
-
+fun AjoutTache(onTaskCreated: (String, Long) -> Unit, onBack: () -> Unit) {
+    var titre by remember { mutableStateOf("") }
+    val calendar = remember { Calendar.getInstance() }
     val context = LocalContext.current
-    var dateVal by remember { mutableStateOf("11/01/2026") }
-    var heureDebut by remember { mutableStateOf("10:00") } // debut
-    var heureFin by remember { mutableStateOf("10:20") }   // fin
+    var dateTexte by remember { mutableStateOf("Choisir Date") }
+    var heureTexte by remember { mutableStateOf("Choisir Heure") }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(FlameBackground)
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = "Créer une tâche",
-            color = Color.White,
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold
-        )
+    Column(modifier = Modifier.fillMaxSize().background(FlameBackground).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("Créer une tâche", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(32.dp))
 
-        // Champ Titre (nom_tache)
         OutlinedTextField(
-            value = titre,
-            onValueChange = { titre = it },
+            value = titre, onValueChange = { titre = it },
             label = { Text("Titre", color = Color.White.copy(alpha = 0.7f)) },
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = Color.White,
-                unfocusedBorderColor = FlamePurple,
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White
-            )
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Champ Description
-        OutlinedTextField(
-            value = description,
-            onValueChange = { description = it },
-            label = { Text("Description", color = Color.White.copy(alpha = 0.7f)) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(120.dp),
-            shape = RoundedCornerShape(16.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = Color.White,
-                unfocusedBorderColor = FlamePurple,
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White
-            )
+            colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = FlamePurple, focusedTextColor = Color.White, unfocusedTextColor = Color.White)
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Bloc Date et Heures (debut et fin)
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = FlameCard)
-        ) {
+        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = FlameCard)) {
             Column(modifier = Modifier.padding(16.dp)) {
-                LignePicker(Icons.Default.DateRange, "Date", dateVal) {
-                    DatePickerDialog(context, { _, y, m, d -> dateVal = "$d/${m+1}/$y" }, 2026, 0, 11).show()
+                LignePicker(Icons.Default.DateRange, "Date", dateTexte) {
+                    DatePickerDialog(context, { _, y, m, d ->
+                        calendar.set(y, m, d)
+                        dateTexte = "$d/${m+1}/$y"
+                    }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH)).show()
                 }
-                LignePicker(Icons.Default.Schedule, "Heure de début", heureDebut) {
-                    TimePickerDialog(context, { _, h, m -> heureDebut = String.format("%02d:%02d", h, m) }, 10, 0, true).show()
-                }
-                LignePicker(Icons.Default.Schedule, "Heure de fin", heureFin) {
-                    TimePickerDialog(context, { _, h, m -> heureFin = String.format("%02d:%02d", h, m) }, 10, 20, true).show()
+                LignePicker(Icons.Default.Schedule, "Heure", heureTexte) {
+                    TimePickerDialog(context, { _, h, m ->
+                        calendar.set(Calendar.HOUR_OF_DAY, h)
+                        calendar.set(Calendar.MINUTE, m)
+                        heureTexte = String.format("%02d:%02d", h, m)
+                    }, calendar.get(Calendar.HOUR_OF_DAY), calendar.get(Calendar.MINUTE), true).show()
                 }
             }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Option "Toute la journée"
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(FlameCard, RoundedCornerShape(24.dp))
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Default.WbSunny, contentDescription = null, tint = Color.White)
-            Spacer(modifier = Modifier.width(16.dp))
-            Text("Toute la journée", color = Color.White, modifier = Modifier.weight(1f))
-            Switch(
-                checked = touteLaJournee,
-                onCheckedChange = { touteLaJournee = it },
-                colors = SwitchDefaults.colors(checkedThumbColor = FlamePurple)
-            )
         }
 
         Spacer(modifier = Modifier.weight(1f))
 
-        // Boutons de validation
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Button(
-                onClick = { if (titre.isNotBlank()) onTaskCreated(titre) },
-                modifier = Modifier
-                    .weight(1f)
-                    .height(56.dp),
+                onClick = { if (titre.isNotBlank()) onTaskCreated(titre, calendar.timeInMillis) },
+                modifier = Modifier.weight(1f).height(56.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = FlamePurple),
                 shape = RoundedCornerShape(28.dp)
-            ) {
-                Text("Créer la tâche", fontWeight = FontWeight.Bold)
-            }
+            ) { Text("Créer") }
 
-            Button(
-                onClick = onBack,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                shape = RoundedCornerShape(28.dp),
-                border = androidx.compose.foundation.BorderStroke(2.dp, FlamePurple)
-            ) {
+            Button(onClick = onBack, modifier = Modifier.weight(1f).height(56.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent), shape = RoundedCornerShape(28.dp), border = androidx.compose.foundation.BorderStroke(2.dp, FlamePurple)) {
                 Text("Annuler", color = Color.White)
             }
         }
@@ -265,20 +177,9 @@ fun EcranAjoutTache(onTaskCreated: (String) -> Unit, onBack: () -> Unit) {
 }
 
 @Composable
-fun LignePicker(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    value: String,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() }
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+fun LignePicker(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, value: String, onClick: () -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, contentDescription = null, tint = Color.White)
         Spacer(modifier = Modifier.width(16.dp))
         Text(label, color = Color.White, modifier = Modifier.weight(1f))
         Text(value, color = Color.White, fontWeight = FontWeight.Bold)
