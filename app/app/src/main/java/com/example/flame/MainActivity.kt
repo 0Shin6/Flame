@@ -12,9 +12,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,7 +29,8 @@ import androidx.navigation.navArgument
 import com.example.flame.ui.theme.FlameTheme
 import java.util.*
 
-enum class EtatTache { A_FAIRE, EN_RETARD, FAIT }
+// Les différents états d'une tâche
+enum class EtatTache { A_FAIRE, EN_RETARD, FAIT, EN_COURS }
 
 data class Tache(
     val id: Long = System.currentTimeMillis(),
@@ -60,10 +59,16 @@ class MainActivity : ComponentActivity() {
 
                     NavHost(navController = navController, startDestination = "liste") {
                         composable("liste") {
-                            //On trie la liste par date de début avant de l'afficher
+                            // On trie la liste par date de début avant de l'afficher
                             ListeTaches(
                                 taches = taches.sortedBy { it.dateDebut },
-                                //Navigation vers AjoutTache avec un index pour la modification
+                                // Action de bascule de l'état (Fait / A faire) [cite: 74, 77]
+                                onToggleEtat = { indexOriginal ->
+                                    val t = taches[indexOriginal]
+                                    val nouvelEtat = if (t.etat == EtatTache.FAIT) EtatTache.A_FAIRE else EtatTache.FAIT
+                                    taches[indexOriginal] = t.copy(etat = nouvelEtat)
+                                },
+                                // Navigation vers AjoutTache avec un index pour la modification
                                 onNavigateToEdit = { index: Int -> navController.navigate("ajout?index=$index") },
                                 onNavigateToAdd = { navController.navigate("ajout") }
                             )
@@ -79,16 +84,25 @@ class MainActivity : ComponentActivity() {
 
                             AjoutTache(
                                 tacheExistante = tacheExistante,
-                                onTaskAction = { nouveauTitre: String, nouvelleDesc: String, timestamp: Long ->
+                                onTaskAction = { nouveauTitre: String, nouvelleDesc: String, timestampDebut: Long, timestampFin: Long ->
                                     val tacheMaj = Tache(
                                         titre = nouveauTitre,
                                         description = nouvelleDesc,
-                                        dateDebut = timestamp,
-                                        dateFin = timestamp + 3600000                                     )
+                                        dateDebut = timestampDebut,
+                                        dateFin = timestampFin, // Utilise la fin réelle choisie par l'utilisateur [cite: 47]
+                                        etat = tacheExistante?.etat ?: EtatTache.A_FAIRE
+                                    )
                                     if (index != null) {
-                                        taches[index] = tacheMaj
+                                        taches[index] = tacheMaj //Tâche à modifier
                                     } else {
-                                        taches.add(tacheMaj)
+                                        taches.add(tacheMaj) // Création de la tâche
+                                    }
+                                    navController.popBackStack()
+                                },
+                                // Supprimer la tâche
+                                onTaskDelete = {
+                                    if (index != null) {
+                                        taches.removeAt(index)
                                     }
                                     navController.popBackStack()
                                 },
@@ -105,6 +119,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun ListeTaches(
     taches: List<Tache>,
+    onToggleEtat: (Int) -> Unit,
     onNavigateToEdit: (Int) -> Unit,
     onNavigateToAdd: () -> Unit
 ) {
@@ -145,7 +160,7 @@ fun ListeTaches(
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(60.dp)
+                                .height(72.dp)
                                 .clickable { onNavigateToEdit(index) },
                             shape = RoundedCornerShape(25.dp),
                             colors = CardDefaults.cardColors(containerColor = FlameCard)
@@ -153,26 +168,23 @@ fun ListeTaches(
                             Row(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(horizontal = 20.dp),
+                                    .padding(horizontal = 16.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                IconButton(onClick = { onToggleEtat(index) }) {
+                                    Icon(
+                                        imageVector = if (tache.etat == EtatTache.FAIT) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                        tint = FlamePurple,
+                                        contentDescription = null
+                                    )
+                                }
                                 Text(
                                     tache.titre,
                                     color = Color.White,
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier.weight(1f),
+                                    fontWeight = FontWeight.Medium
                                 )
-                                //Formatage de l'heure à partir du timestamp
-                                val cal =
-                                    Calendar.getInstance().apply { timeInMillis = tache.dateDebut }
-                                Text(
-                                    text = String.format(
-                                        "%02d:%02d",
-                                        cal.get(Calendar.HOUR_OF_DAY),
-                                        cal.get(Calendar.MINUTE)
-                                    ),
-                                    color = Color.LightGray,
-                                    fontSize = 14.sp
-                                )
+                                BadgeEtat(tache)
                             }
                         }
                     }
@@ -183,24 +195,53 @@ fun ListeTaches(
 }
 
 @Composable
+fun BadgeEtat(tache: Tache) {
+    val estEnRetard = System.currentTimeMillis() > tache.dateDebut && tache.etat != EtatTache.FAIT
+
+    val (color, label) = when {
+        tache.etat == EtatTache.FAIT -> Color(0xFFB39DDB) to "Fait"
+        estEnRetard -> Color(0xFF9C27B0) to "En retard"
+        else -> Color(0xFFE91E63) to "En avance"
+    }
+
+    Surface(color = color, shape = RoundedCornerShape(12.dp)) {
+        Text(
+            label,
+            color = Color.White,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        )
+    }
+}
+
+@Composable
 fun AjoutTache(
     tacheExistante: Tache? = null,
-    onTaskAction: (String, String, Long) -> Unit,
+    onTaskAction: (String, String, Long, Long) -> Unit,
+    onTaskDelete: () -> Unit,
     onBack: () -> Unit
 ) {
     //Initialisation des états avec les données de la tâche existante si on est en modification
     var titre by remember { mutableStateOf(tacheExistante?.titre ?: "") }
     var desc by remember { mutableStateOf(tacheExistante?.description ?: "") }
 
-    val calendar = remember {
+    val calDebut = remember {
         Calendar.getInstance().apply {
             if (tacheExistante != null) timeInMillis = tacheExistante.dateDebut
         }
     }
+    val calFin = remember {
+        Calendar.getInstance().apply {
+            if (tacheExistante != null) timeInMillis = tacheExistante.dateFin
+        }
+    }
     val context = LocalContext.current
-    var dateTexte by remember { mutableStateOf(if (tacheExistante != null) "Date modifiée" else "Choisir la date") }
-    var heureDebutTexte by remember { mutableStateOf(if (tacheExistante != null) "Heure modifiée" else "Choisir l'heure de début") }
-    var heureFinTexte by remember { mutableStateOf(if (tacheExistante != null) "Heure modifiée" else "Choisir l'heure de fin") }
+
+    // Initialisation des zones pour la date et les heures
+    var dateTexte by remember { mutableStateOf(tacheExistante?.let { "${calDebut.get(Calendar.DAY_OF_MONTH)}/${calDebut.get(Calendar.MONTH) + 1}" } ?: "Choisir la date") }
+    var heureDebutTexte by remember { mutableStateOf(tacheExistante?.let { String.format("%02d:%02d", calDebut.get(Calendar.HOUR_OF_DAY), calDebut.get(Calendar.MINUTE)) } ?: "Choisir l'heure de début") }
+    var heureFinTexte by remember { mutableStateOf(tacheExistante?.let { String.format("%02d:%02d", calFin.get(Calendar.HOUR_OF_DAY), calFin.get(Calendar.MINUTE)) } ?: "Choisir l'heure de fin") }
 
     Column(
         modifier = Modifier
@@ -258,12 +299,13 @@ fun AjoutTache(
                     DatePickerDialog(
                         context,
                         { _, y, m, d ->
-                            calendar.set(y, m, d)
-                            dateTexte = "$d/${m + 1}/$y"
+                            calDebut.set(y, m, d)
+                            calFin.set(y, m, d)
+                            dateTexte = "$d/${m + 1}"
                         },
-                        calendar.get(Calendar.YEAR),
-                        calendar.get(Calendar.MONTH),
-                        calendar.get(Calendar.DAY_OF_MONTH)
+                        calDebut.get(Calendar.YEAR),
+                        calDebut.get(Calendar.MONTH),
+                        calDebut.get(Calendar.DAY_OF_MONTH)
                     ).show()
                 }
                 //Picker pour l'heure de début
@@ -271,12 +313,12 @@ fun AjoutTache(
                     TimePickerDialog(
                         context,
                         { _, h, m ->
-                            calendar.set(Calendar.HOUR_OF_DAY, h)
-                            calendar.set(Calendar.MINUTE, m)
+                            calDebut.set(Calendar.HOUR_OF_DAY, h)
+                            calDebut.set(Calendar.MINUTE, m)
                             heureDebutTexte = String.format("%02d:%02d", h, m)
                         },
-                        calendar.get(Calendar.HOUR_OF_DAY),
-                        calendar.get(Calendar.MINUTE),
+                        calDebut.get(Calendar.HOUR_OF_DAY),
+                        calDebut.get(Calendar.MINUTE),
                         true
                     ).show()
                 }
@@ -285,11 +327,12 @@ fun AjoutTache(
                     TimePickerDialog(
                         context,
                         { _, h, m ->
-                            // Ici vous pouvez gérer la logique pour dateFin si nécessaire
+                            calFin.set(Calendar.HOUR_OF_DAY, h)
+                            calFin.set(Calendar.MINUTE, m)
                             heureFinTexte = String.format("%02d:%02d", h, m)
                         },
-                        calendar.get(Calendar.HOUR_OF_DAY),
-                        calendar.get(Calendar.MINUTE),
+                        calFin.get(Calendar.HOUR_OF_DAY),
+                        calFin.get(Calendar.MINUTE),
                         true
                     ).show()
                 }
@@ -297,6 +340,18 @@ fun AjoutTache(
         }
 
         Spacer(modifier = Modifier.weight(1f))
+
+        if (tacheExistante != null) {
+            TextButton(
+                onClick = onTaskDelete,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Delete, contentDescription = null, tint = Color.Red)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Supprimer la tâche", color = Color.Red, fontWeight = FontWeight.Bold)
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -307,7 +362,8 @@ fun AjoutTache(
                     if (titre.isNotBlank()) onTaskAction(
                         titre,
                         desc,
-                        calendar.timeInMillis
+                        calDebut.timeInMillis,
+                        calFin.timeInMillis
                     )
                 },
                 modifier = Modifier
