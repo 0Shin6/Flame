@@ -123,6 +123,13 @@ fun ListeTaches(
     onNavigateToEdit: (Int) -> Unit,
     onNavigateToAdd: () -> Unit
 ) {
+    //État pour mémoriser le filtre
+    var filtreSelectionne by remember { mutableStateOf<EtatTache?>(null) }
+    var menuOuvert by remember { mutableStateOf(false) }
+
+    //On filtre la liste en fonction de l'état sélectionnée
+    val tachesFiltrees = if (filtreSelectionne == null) taches else taches.filter { it.etat == filtreSelectionne }
+
     Scaffold(
         floatingActionButton = {
             FloatingActionButton(
@@ -148,43 +155,98 @@ fun ListeTaches(
                 fontWeight = FontWeight.Bold
             )
             Spacer(modifier = Modifier.height(32.dp))
+
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Button(
+                    onClick = { menuOuvert = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = FlamePurple.copy(alpha = 0.5f)),
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    //Affiche l'état sélectionné ou le texte par défaut
+                    val labelBouton = filtreSelectionne?.name
+                        ?.replace("_", " ")
+                        ?.lowercase()
+                        ?.replaceFirstChar { it.uppercase() }
+                        ?: "Tous les états"
+
+                    Text(labelBouton, fontSize = 14.sp)
+                }
+
+                DropdownMenu(
+                    expanded = menuOuvert,
+                    onDismissRequest = { menuOuvert = false },
+                    modifier = Modifier.background(FlameCard)
+                ) {
+                    //Option pour réinitialiser le filtre
+                    DropdownMenuItem(
+                        text = { Text("Tous", color = Color.White) },
+                        onClick = {
+                            filtreSelectionne = null
+                            menuOuvert = false
+                        }
+                    )
+
+                    EtatTache.entries.forEach { etat ->
+                        DropdownMenuItem(
+                            text = {
+                                val labelMenu = etat.name
+                                    .replace("_", " ")
+                                    .lowercase()
+                                    .replaceFirstChar { it.uppercase() }
+                                Text(labelMenu, color = Color.White)
+                            },
+                            onClick = {
+                                filtreSelectionne = etat
+                                menuOuvert = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
             Text("Vos tâches", color = Color.White, fontSize = 20.sp)
 
-            // Affichage des tâches
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.padding(top = 16.dp)
-            ) {
-                taches.forEachIndexed { index, tache ->
-                    item {
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(72.dp)
-                                .clickable { onNavigateToEdit(index) },
-                            shape = RoundedCornerShape(25.dp),
-                            colors = CardDefaults.cardColors(containerColor = FlameCard)
-                        ) {
-                            Row(
+            //Affichage du message "Aucune tâche" si la liste est vide
+            if (tachesFiltrees.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Aucune tâche", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                }
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.padding(top = 16.dp)
+                ) {
+                    tachesFiltrees.forEach { tache ->
+                        item {
+                            val indexOriginal = taches.indexOf(tache)
+                            Card(
                                 modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = 16.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                    .fillMaxWidth()
+                                    .height(72.dp)
+                                    .clickable { onNavigateToEdit(indexOriginal) },
+                                shape = RoundedCornerShape(25.dp),
+                                colors = CardDefaults.cardColors(containerColor = FlameCard)
                             ) {
-                                IconButton(onClick = { onToggleEtat(index) }) {
-                                    Icon(
-                                        imageVector = if (tache.etat == EtatTache.FAIT) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-                                        tint = FlamePurple,
-                                        contentDescription = null
+                                Row(
+                                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    IconButton(onClick = { onToggleEtat(indexOriginal) }) {
+                                        Icon(
+                                            imageVector = if (tache.etat == EtatTache.FAIT) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                            tint = FlamePurple,
+                                            contentDescription = null
+                                        )
+                                    }
+                                    Text(
+                                        tache.titre,
+                                        color = Color.White,
+                                        modifier = Modifier.weight(1f),
+                                        fontWeight = FontWeight.Medium
                                     )
+                                    BadgeEtat(tache)
                                 }
-                                Text(
-                                    tache.titre,
-                                    color = Color.White,
-                                    modifier = Modifier.weight(1f),
-                                    fontWeight = FontWeight.Medium
-                                )
-                                BadgeEtat(tache)
                             }
                         }
                     }
@@ -201,7 +263,7 @@ fun BadgeEtat(tache: Tache) {
         //Tâche validé
         tache.etat == EtatTache.FAIT -> {
             //Tâche faite en avance
-            if (maintenant < tache.dateDebut) "En avance" to Color(0xFFE91E63) // Fait avant le début
+            if (maintenant < tache.dateDebut) "En avance" to Color(0xFFE91E63)
             //Tâche faite à l'heure
             else "Fait" to Color(0xFFB39DDB)
         }
