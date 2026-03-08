@@ -196,17 +196,41 @@ fun ListeTaches(
 
 @Composable
 fun BadgeEtat(tache: Tache) {
-    val estEnRetard = System.currentTimeMillis() > tache.dateDebut && tache.etat != EtatTache.FAIT
+    val maintenant = System.currentTimeMillis()
+    val (label, color) = when {
+        //Tâche validé
+        tache.etat == EtatTache.FAIT -> {
+            //Tâche faite en avance
+            if (maintenant < tache.dateDebut) "En avance" to Color(0xFFE91E63) // Fait avant le début
+            //Tâche faite à l'heure
+            else "Fait" to Color(0xFFB39DDB)
+        }
 
-    val (color, label) = when {
-        tache.etat == EtatTache.FAIT -> Color(0xFFB39DDB) to "Fait"
-        estEnRetard -> Color(0xFF9C27B0) to "En retard"
-        else -> Color(0xFFE91E63) to "En avance"
+        // Tâche en retard
+        maintenant > tache.dateFin -> "En retard" to Color(0xFF9C27B0)
+
+        //Tâche en cours
+        maintenant in tache.dateDebut..tache.dateFin -> "En cours" to Color(0xFFFF9800)
+
+        //Tâche à venir
+        else -> {
+            val differenceMn = (tache.dateDebut - maintenant) / 60000
+            if (differenceMn < 60) {
+                //Débute dans moins d'1h
+                "Dans ${differenceMn}mn" to Color(0xFF03A9F4)
+            } else {
+                val cal = Calendar.getInstance().apply { timeInMillis = tache.dateDebut }
+                String.format("%02d:%02d", cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE)) to Color(0xFF9E9E9E)
+            }
+        }
     }
 
-    Surface(color = color, shape = RoundedCornerShape(12.dp)) {
+    Surface(
+        color = color,
+        shape = RoundedCornerShape(12.dp)
+    ) {
         Text(
-            label,
+            text = label,
             color = Color.White,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
