@@ -28,7 +28,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.scale
@@ -49,6 +48,9 @@ import java.util.*
 // Les différents états d'une tâche
 enum class EtatTache { A_FAIRE, EN_RETARD, FAIT, EN_COURS }
 
+// Périodicité des tâches
+enum class Periodicite { AUCUNE, QUOTIDIEN, HEBDOMADAIRE, MENSUEL }
+
 data class Tache(
     val id: Long = System.currentTimeMillis(),
     val titre: String,
@@ -57,7 +59,8 @@ data class Tache(
     val dateFin: Long,
     val etat: EtatTache = EtatTache.A_FAIRE,
     val estTouteLaJournee: Boolean = false,
-    val rappels: Int? = null
+    val rappels: Int? = null,
+    val periodicite: Periodicite = Periodicite.AUCUNE
 )
 
 // Design global du projet
@@ -88,7 +91,7 @@ class MainActivity : ComponentActivity() {
             FlameTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = FlameBackground) {
                     val navController = rememberNavController()
-                    //Mets à jour l'IHM quand une tâche est ajouté / modifié
+                    //Mets à jour l'interface quand une tâche est ajouté / modifié
                     val taches = remember { mutableStateListOf<Tache>() }
                     var showFlameEffect by remember { mutableStateOf(false) }
 
@@ -96,18 +99,28 @@ class MainActivity : ComponentActivity() {
                         NavHost(navController = navController, startDestination = "liste") {
                             composable("liste") {
                                 ListeTaches(
-                                    taches = taches.sortedBy { it.dateDebut },
-                                    onToggleEtat = { indexOriginal ->
-                                        val t = taches[indexOriginal]
-                                        val nouvelEtat = if (t.etat == EtatTache.FAIT) EtatTache.A_FAIRE else EtatTache.FAIT
-                                        taches[indexOriginal] = t.copy(etat = nouvelEtat)
-                                        
-                                        if (nouvelEtat == EtatTache.FAIT) {
-                                            showFlameEffect = true
-                                            vibrer(this@MainActivity)
+                                    taches = taches.toList().sortedBy { it.dateDebut },
+                                    onToggleEtat = { tache ->
+                                        val index = taches.indexOfFirst { it.id == tache.id }
+                                        if (index != -1) {
+                                            val t = taches[index]
+                                            val nouvelEtat = if (t.etat == EtatTache.FAIT) EtatTache.A_FAIRE else EtatTache.FAIT
+                                            taches[index] = t.copy(etat = nouvelEtat)
+                                            
+                                            if (nouvelEtat == EtatTache.FAIT) {
+                                                showFlameEffect = true
+                                                vibrer(this@MainActivity)
+                                            }
                                         }
                                     },
-                                    onNavigateToEdit = { index: Int -> navController.navigate("ajout?index=$index") },
+                                    onDeleteTache = { tache ->
+                                        annulerNotifications(this@MainActivity, tache)
+                                        taches.removeIf { it.id == tache.id }
+                                    },
+                                    onNavigateToEdit = { tache ->
+                                        val index = taches.indexOfFirst { it.id == tache.id }
+                                        navController.navigate("ajout?index=$index")
+                                    },
                                     onNavigateToAdd = { navController.navigate("ajout") }
                                 )
                             }
@@ -117,22 +130,23 @@ class MainActivity : ComponentActivity() {
                                 arguments = listOf(navArgument("index") { nullable = true })
                             ) { backStackEntry ->
                                 val index = backStackEntry.arguments?.getString("index")?.toIntOrNull()
-                                val tacheExistante = if (index != null) taches[index] else null
+                                val tacheExistante = if (index != null && index in taches.indices) taches[index] else null
 
                                 AjoutTache(
                                     tacheExistante = tacheExistante,
-                                    onTaskAction = { nouveauTitre, nouvelleDesc, timestampDebut, timestampFin, touteJournee, rappel ->
+                                    onTaskAction = { titre, desc, debut, fin, touteJournee, rappel, perio ->
                                         val tacheMaj = Tache(
                                             id = tacheExistante?.id ?: System.currentTimeMillis(),
-                                            titre = nouveauTitre,
-                                            description = nouvelleDesc,
-                                            dateDebut = timestampDebut,
-                                            dateFin = timestampFin,
+                                            titre = titre,
+                                            description = desc,
+                                            dateDebut = debut,
+                                            dateFin = fin,
                                             etat = tacheExistante?.etat ?: EtatTache.A_FAIRE,
                                             estTouteLaJournee = touteJournee,
-                                            rappels = rappel
+                                            rappels = rappel,
+                                            periodicite = perio
                                         )
-                                        if (index != null) {
+                                        if (index != null && index in taches.indices) {
                                             taches[index] = tacheMaj
                                         } else {
                                             taches.add(tacheMaj)
@@ -142,7 +156,7 @@ class MainActivity : ComponentActivity() {
                                         navController.popBackStack()
                                     },
                                     onTaskDelete = {
-                                        if (index != null) {
+                                        if (index != null && index in taches.indices) {
                                             annulerNotifications(this@MainActivity, taches[index])
                                             taches.removeAt(index)
                                         }
@@ -179,10 +193,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    //Cette fonction gère les notifications (rappels et retards)
     private fun programmerNotifications(context: Context, tache: Tache) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
-        // 1. Programmer le rappel (si configuré)
         tache.rappels?.let { mins ->
             val tempsRappel = tache.dateDebut - (mins * 60 * 1000)
             if (tempsRappel > System.currentTimeMillis()) {
@@ -200,7 +214,6 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // 2. Programmer la notification de retard
         if (tache.dateFin > System.currentTimeMillis()) {
             val intentRetard = Intent(context, ReminderReceiver::class.java).apply {
                 putExtra("TYPE", "RETARD")
@@ -229,14 +242,11 @@ class MainActivity : ComponentActivity() {
 
     private fun annulerNotifications(context: Context, tache: Tache) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        
-        // Annuler rappel
         val intentRappel = Intent(context, ReminderReceiver::class.java)
         PendingIntent.getBroadcast(context, tache.id.toInt(), intentRappel, PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE)?.let {
             alarmManager.cancel(it)
         }
-        
-        // Annuler retard
+
         val intentRetard = Intent(context, ReminderReceiver::class.java)
         PendingIntent.getBroadcast(context, (tache.id + 1).toInt(), intentRetard, PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE)?.let {
             alarmManager.cancel(it)
@@ -310,11 +320,13 @@ fun PetiteFlamme(onFinished: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ListeTaches(
     taches: List<Tache>,
-    onToggleEtat: (Int) -> Unit,
-    onNavigateToEdit: (Int) -> Unit,
+    onToggleEtat: (Tache) -> Unit,
+    onDeleteTache: (Tache) -> Unit,
+    onNavigateToEdit: (Tache) -> Unit,
     onNavigateToAdd: () -> Unit
 ) {
     //État pour mémoriser le filtre
@@ -399,7 +411,6 @@ fun ListeTaches(
             Spacer(modifier = Modifier.height(32.dp))
             Text("Vos tâches", color = Color.White, fontSize = 20.sp)
 
-            //Affichage du message "Aucune tâche" si le filtre est vide
             if (tachesFiltrees.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("Aucune tâche", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
@@ -409,36 +420,73 @@ fun ListeTaches(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.padding(top = 16.dp)
                 ) {
-                    items(tachesFiltrees) { tache ->
-                        val indexOriginal = taches.indexOf(tache)
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(72.dp)
-                                .clickable { onNavigateToEdit(indexOriginal) },
-                            shape = RoundedCornerShape(25.dp),
-                            colors = CardDefaults.cardColors(containerColor = FlameCard)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                IconButton(onClick = { onToggleEtat(indexOriginal) }) {
-                                    Icon(
-                                        imageVector = if (tache.etat == EtatTache.FAIT) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-                                        tint = FlamePurple,
-                                        contentDescription = null
-                                    )
-                                }
-                                Text(
-                                    tache.titre,
-                                    color = Color.White,
-                                    modifier = Modifier.weight(1f),
-                                    fontWeight = FontWeight.Medium
-                                )
-                                BadgeEtat(tache)
+                    items(tachesFiltrees, key = { it.id }) { tache ->
+                        val dismissState = rememberSwipeToDismissBoxState(
+                            confirmValueChange = {
+                                if (it == SwipeToDismissBoxValue.EndToStart) {
+                                    onDeleteTache(tache)
+                                    true
+                                } else false
                             }
-                        }
+                        )
+
+                        SwipeToDismissBox(
+                            state = dismissState,
+                            backgroundContent = {
+                                val color = when (dismissState.dismissDirection) {
+                                    SwipeToDismissBoxValue.EndToStart -> Color.Red
+                                    else -> Color.Transparent
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(color, RoundedCornerShape(25.dp))
+                                        .padding(horizontal = 20.dp),
+                                    contentAlignment = Alignment.CenterEnd
+                                ) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Supprimer", tint = Color.White)
+                                }
+                            },
+                            enableDismissFromStartToEnd = false,
+                            content = {
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(72.dp)
+                                        .clickable { onNavigateToEdit(tache) },
+                                    shape = RoundedCornerShape(25.dp),
+                                    colors = CardDefaults.cardColors(containerColor = FlameCard)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        IconButton(onClick = { onToggleEtat(tache) }) {
+                                            Icon(
+                                                imageVector = if (tache.etat == EtatTache.FAIT) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                                tint = FlamePurple,
+                                                contentDescription = null
+                                            )
+                                        }
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                tache.titre,
+                                                color = Color.White,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                            if (tache.periodicite != Periodicite.AUCUNE) {
+                                                Text(
+                                                    tache.periodicite.name.lowercase().replaceFirstChar { it.uppercase() },
+                                                    color = Color.White.copy(alpha = 0.6f),
+                                                    fontSize = 10.sp
+                                                )
+                                            }
+                                        }
+                                        BadgeEtat(tache)
+                                    }
+                                }
+                            }
+                        )
                     }
                 }
             }
@@ -488,16 +536,17 @@ fun BadgeEtat(tache: Tache) {
 @Composable
 fun AjoutTache(
     tacheExistante: Tache? = null,
-    onTaskAction: (String, String, Long, Long, Boolean, Int?) -> Unit,
+    onTaskAction: (String, String, Long, Long, Boolean, Int?, Periodicite) -> Unit,
     onTaskDelete: () -> Unit,
     onBack: () -> Unit
 ) {
-    //Initialisation des états avec les données de la tâche existante si on est en modification
     var titre by remember { mutableStateOf(tacheExistante?.titre ?: "") }
     var desc by remember { mutableStateOf(tacheExistante?.description ?: "") }
     var estTouteJournee by remember { mutableStateOf(tacheExistante?.estTouteLaJournee ?: false) }
     var rappelSelectionne by remember { mutableStateOf(tacheExistante?.rappels) }
+    var perioSelectionnee by remember { mutableStateOf(tacheExistante?.periodicite ?: Periodicite.AUCUNE) }
     var menuRappelOuvert by remember { mutableStateOf(false) }
+    var menuPerioOuvert by remember { mutableStateOf(false) }
 
     val calDebut = remember {
         Calendar.getInstance().apply {
@@ -511,7 +560,6 @@ fun AjoutTache(
     }
     val context = LocalContext.current
 
-    // Initialisation des zones pour la date et les heures
     var dateTexte by remember { mutableStateOf(tacheExistante?.let { "${calDebut.get(Calendar.DAY_OF_MONTH)}/${calDebut.get(Calendar.MONTH) + 1}" } ?: "Choisir la date") }
     var heureDebutTexte by remember { mutableStateOf(tacheExistante?.let { String.format("%02d:%02d", calDebut.get(Calendar.HOUR_OF_DAY), calDebut.get(Calendar.MINUTE)) } ?: "Choisir l'heure de début") }
     var heureFinTexte by remember { mutableStateOf(tacheExistante?.let { String.format("%02d:%02d", calFin.get(Calendar.HOUR_OF_DAY), calFin.get(Calendar.MINUTE)) } ?: "Choisir l'heure de fin") }
@@ -523,7 +571,6 @@ fun AjoutTache(
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        //Changement du titre de la page en fonction du contexte
         Text(
             if (tacheExistante == null) "Créer une tâche" else "Modifier la tâche",
             color = Color.White,
@@ -562,7 +609,6 @@ fun AjoutTache(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        //Option toute la journée
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             Text("Toute la journée", color = Color.White)
             Switch(checked = estTouteJournee, onCheckedChange = { estTouteJournee = it }, colors = SwitchDefaults.colors(checkedThumbColor = FlamePurple))
@@ -589,7 +635,6 @@ fun AjoutTache(
                         calDebut.get(Calendar.DAY_OF_MONTH)
                     ).show()
                 }
-                //Picker pour l'heure de début et de fin désactivé si la tâche dure toute la journée
                 LignePicker(
                     icon = Icons.Default.AccessTime,
                     label = "Heure de début",
@@ -629,7 +674,6 @@ fun AjoutTache(
 
                 HorizontalDivider(color = Color.White.copy(alpha = 0.1f), thickness = 1.dp, modifier = Modifier.padding(vertical = 8.dp))
 
-                //Zone de Rappel
                 Box {
                     LignePicker(
                         icon = Icons.Default.NotificationsActive,
@@ -646,16 +690,40 @@ fun AjoutTache(
                         }
                     }
                 }
+
+                Box {
+                    LignePicker(
+                        icon = Icons.Default.Repeat,
+                        label = "Répéter",
+                        value = when(perioSelectionnee) {
+                            Periodicite.AUCUNE -> "Jamais"
+                            Periodicite.QUOTIDIEN -> "Chaque jour"
+                            Periodicite.HEBDOMADAIRE -> "Chaque semaine"
+                            Periodicite.MENSUEL -> "Chaque mois"
+                        }
+                    ) { menuPerioOuvert = true }
+
+                    DropdownMenu(expanded = menuPerioOuvert, onDismissRequest = { menuPerioOuvert = false }, modifier = Modifier.background(FlameCard)) {
+                        Periodicite.entries.forEach { perio ->
+                            DropdownMenuItem(
+                                text = { Text(when(perio) {
+                                    Periodicite.AUCUNE -> "Jamais"
+                                    Periodicite.QUOTIDIEN -> "Chaque jour"
+                                    Periodicite.HEBDOMADAIRE -> "Chaque semaine"
+                                    Periodicite.MENSUEL -> "Chaque mois"
+                                }, color = Color.White) },
+                                onClick = { perioSelectionnee = perio; menuPerioOuvert = false }
+                            )
+                        }
+                    }
+                }
             }
         }
 
         Spacer(modifier = Modifier.weight(1f))
 
         if (tacheExistante != null) {
-            TextButton(
-                onClick = onTaskDelete,
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            TextButton(onClick = onTaskDelete, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Default.Delete, contentDescription = null, tint = Color.Red)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Supprimer la tâche", color = Color.Red, fontWeight = FontWeight.Bold)
@@ -675,24 +743,20 @@ fun AjoutTache(
                         calDebut.timeInMillis,
                         calFin.timeInMillis,
                         estTouteJournee,
-                        rappelSelectionne
+                        rappelSelectionne,
+                        perioSelectionnee
                     )
                 },
-                modifier = Modifier
-                    .weight(1f)
-                    .height(56.dp),
+                modifier = Modifier.weight(1f).height(56.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = FlamePurple),
                 shape = RoundedCornerShape(28.dp)
             ) {
-                //Texte du bouton s'adaptant au contexte
                 Text(if (tacheExistante == null) "Créer" else "Enregistrer")
             }
 
             Button(
                 onClick = onBack,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(56.dp),
+                modifier = Modifier.weight(1f).height(56.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
                 shape = RoundedCornerShape(28.dp),
                 border = androidx.compose.foundation.BorderStroke(2.dp, FlamePurple)
