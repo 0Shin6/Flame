@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -41,6 +42,16 @@ data class Tache(
     val etat: EtatTache = EtatTache.A_FAIRE
 )
 
+fun obtenirEtat(tache: Tache): EtatTache {
+    val maintenant = System.currentTimeMillis()
+    return when {
+        tache.etat == EtatTache.FAIT -> EtatTache.FAIT
+        maintenant > tache.dateFin -> EtatTache.EN_RETARD
+        maintenant in tache.dateDebut..tache.dateFin -> EtatTache.EN_COURS
+        else -> EtatTache.A_FAIRE
+    }
+}
+
 // Design global du projet
 val FlameBackground = Color(0xFF1A0033)
 val FlameCard = Color(0xFF2E004B)
@@ -62,7 +73,7 @@ class MainActivity : ComponentActivity() {
                             // On trie la liste par date de début avant de l'afficher
                             ListeTaches(
                                 taches = taches.sortedBy { it.dateDebut },
-                                // Action de bascule de l'état (Fait / A faire) [cite: 74, 77]
+                                //Action de bascule entre fait et à faire
                                 onToggleEtat = { indexOriginal ->
                                     val t = taches[indexOriginal]
                                     val nouvelEtat = if (t.etat == EtatTache.FAIT) EtatTache.A_FAIRE else EtatTache.FAIT
@@ -89,7 +100,7 @@ class MainActivity : ComponentActivity() {
                                         titre = nouveauTitre,
                                         description = nouvelleDesc,
                                         dateDebut = timestampDebut,
-                                        dateFin = timestampFin, // Utilise la fin réelle choisie par l'utilisateur [cite: 47]
+                                        dateFin = timestampFin,
                                         etat = tacheExistante?.etat ?: EtatTache.A_FAIRE
                                     )
                                     if (index != null) {
@@ -127,8 +138,8 @@ fun ListeTaches(
     var filtreSelectionne by remember { mutableStateOf<EtatTache?>(null) }
     var menuOuvert by remember { mutableStateOf(false) }
 
-    //On filtre la liste en fonction de l'état sélectionnée
-    val tachesFiltrees = if (filtreSelectionne == null) taches else taches.filter { it.etat == filtreSelectionne }
+    val tachesFiltrees = if (filtreSelectionne == null) taches
+    else taches.filter { obtenirEtat(it) == filtreSelectionne }
 
     Scaffold(
         floatingActionButton = {
@@ -162,7 +173,6 @@ fun ListeTaches(
                     colors = ButtonDefaults.buttonColors(containerColor = FlamePurple.copy(alpha = 0.5f)),
                     shape = RoundedCornerShape(20.dp)
                 ) {
-                    //Affiche l'état sélectionné ou le texte par défaut
                     val labelBouton = filtreSelectionne?.name
                         ?.replace("_", " ")
                         ?.lowercase()
@@ -177,7 +187,6 @@ fun ListeTaches(
                     onDismissRequest = { menuOuvert = false },
                     modifier = Modifier.background(FlameCard)
                 ) {
-                    //Option pour réinitialiser le filtre
                     DropdownMenuItem(
                         text = { Text("Tous", color = Color.White) },
                         onClick = {
@@ -207,7 +216,7 @@ fun ListeTaches(
             Spacer(modifier = Modifier.height(32.dp))
             Text("Vos tâches", color = Color.White, fontSize = 20.sp)
 
-            //Affichage du message "Aucune tâche" si la liste est vide
+            //Affichage du message "Aucune tâche" si le filtre est vide
             if (tachesFiltrees.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("Aucune tâche", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
@@ -217,36 +226,34 @@ fun ListeTaches(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.padding(top = 16.dp)
                 ) {
-                    tachesFiltrees.forEach { tache ->
-                        item {
-                            val indexOriginal = taches.indexOf(tache)
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(72.dp)
-                                    .clickable { onNavigateToEdit(indexOriginal) },
-                                shape = RoundedCornerShape(25.dp),
-                                colors = CardDefaults.cardColors(containerColor = FlameCard)
+                    items(tachesFiltrees) { tache ->
+                        val indexOriginal = taches.indexOf(tache)
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(72.dp)
+                                .clickable { onNavigateToEdit(indexOriginal) },
+                            shape = RoundedCornerShape(25.dp),
+                            colors = CardDefaults.cardColors(containerColor = FlameCard)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(
-                                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    IconButton(onClick = { onToggleEtat(indexOriginal) }) {
-                                        Icon(
-                                            imageVector = if (tache.etat == EtatTache.FAIT) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-                                            tint = FlamePurple,
-                                            contentDescription = null
-                                        )
-                                    }
-                                    Text(
-                                        tache.titre,
-                                        color = Color.White,
-                                        modifier = Modifier.weight(1f),
-                                        fontWeight = FontWeight.Medium
+                                IconButton(onClick = { onToggleEtat(indexOriginal) }) {
+                                    Icon(
+                                        imageVector = if (tache.etat == EtatTache.FAIT) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                        tint = FlamePurple,
+                                        contentDescription = null
                                     )
-                                    BadgeEtat(tache)
                                 }
+                                Text(
+                                    tache.titre,
+                                    color = Color.White,
+                                    modifier = Modifier.weight(1f),
+                                    fontWeight = FontWeight.Medium
+                                )
+                                BadgeEtat(tache)
                             }
                         }
                     }
@@ -259,26 +266,18 @@ fun ListeTaches(
 @Composable
 fun BadgeEtat(tache: Tache) {
     val maintenant = System.currentTimeMillis()
-    val (label, color) = when {
-        //Tâche validé
-        tache.etat == EtatTache.FAIT -> {
-            //Tâche faite en avance
+    val etatReel = obtenirEtat(tache)
+
+    val (label, color) = when (etatReel) {
+        EtatTache.FAIT -> {
             if (maintenant < tache.dateDebut) "En avance" to Color(0xFFE91E63)
-            //Tâche faite à l'heure
             else "Fait" to Color(0xFFB39DDB)
         }
-
-        // Tâche en retard
-        maintenant > tache.dateFin -> "En retard" to Color(0xFF9C27B0)
-
-        //Tâche en cours
-        maintenant in tache.dateDebut..tache.dateFin -> "En cours" to Color(0xFFFF9800)
-
-        //Tâche à venir
+        EtatTache.EN_RETARD -> "En retard" to Color(0xFF9C27B0)
+        EtatTache.EN_COURS -> "En cours" to Color(0xFFFF9800)
         else -> {
             val differenceMn = (tache.dateDebut - maintenant) / 60000
             if (differenceMn < 60) {
-                //Débute dans moins d'1h
                 "Dans ${differenceMn}mn" to Color(0xFF03A9F4)
             } else {
                 val cal = Calendar.getInstance().apply { timeInMillis = tache.dateDebut }
@@ -308,7 +307,6 @@ fun AjoutTache(
     onTaskDelete: () -> Unit,
     onBack: () -> Unit
 ) {
-    //Initialisation des états avec les données de la tâche existante si on est en modification
     var titre by remember { mutableStateOf(tacheExistante?.titre ?: "") }
     var desc by remember { mutableStateOf(tacheExistante?.description ?: "") }
 
@@ -324,7 +322,6 @@ fun AjoutTache(
     }
     val context = LocalContext.current
 
-    // Initialisation des zones pour la date et les heures
     var dateTexte by remember { mutableStateOf(tacheExistante?.let { "${calDebut.get(Calendar.DAY_OF_MONTH)}/${calDebut.get(Calendar.MONTH) + 1}" } ?: "Choisir la date") }
     var heureDebutTexte by remember { mutableStateOf(tacheExistante?.let { String.format("%02d:%02d", calDebut.get(Calendar.HOUR_OF_DAY), calDebut.get(Calendar.MINUTE)) } ?: "Choisir l'heure de début") }
     var heureFinTexte by remember { mutableStateOf(tacheExistante?.let { String.format("%02d:%02d", calFin.get(Calendar.HOUR_OF_DAY), calFin.get(Calendar.MINUTE)) } ?: "Choisir l'heure de fin") }
@@ -336,7 +333,6 @@ fun AjoutTache(
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        //Changement du titre de la page en fonction du contexte
         Text(
             if (tacheExistante == null) "Créer une tâche" else "Modifier la tâche",
             color = Color.White,
@@ -394,7 +390,6 @@ fun AjoutTache(
                         calDebut.get(Calendar.DAY_OF_MONTH)
                     ).show()
                 }
-                //Picker pour l'heure de début
                 LignePicker(Icons.Default.Schedule, "Heure de début", heureDebutTexte) {
                     TimePickerDialog(
                         context,
@@ -408,7 +403,6 @@ fun AjoutTache(
                         true
                     ).show()
                 }
-                //Picker pour l'heure de fin
                 LignePicker(Icons.Default.Schedule, "Heure de fin", heureFinTexte) {
                     TimePickerDialog(
                         context,
@@ -458,7 +452,6 @@ fun AjoutTache(
                 colors = ButtonDefaults.buttonColors(containerColor = FlamePurple),
                 shape = RoundedCornerShape(28.dp)
             ) {
-                //Texte du bouton s'adaptant au contexte
                 Text(if (tacheExistante == null) "Créer" else "Enregistrer")
             }
 
