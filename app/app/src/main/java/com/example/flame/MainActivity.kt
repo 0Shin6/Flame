@@ -1,11 +1,21 @@
 package com.example.flame
 
+import android.app.AlarmManager
 import android.app.DatePickerDialog
+import android.app.PendingIntent
 import android.app.TimePickerDialog
+import android.content.Context
+import android.content.Intent
+import android.os.Build
 import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -18,8 +28,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -28,6 +43,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.flame.ui.theme.FlameTheme
+import kotlinx.coroutines.launch
 import java.util.*
 
 // Les différents états d'une tâche
@@ -74,61 +90,219 @@ class MainActivity : ComponentActivity() {
                     val navController = rememberNavController()
                     //Mets à jour l'IHM quand une tâche est ajouté / modifié
                     val taches = remember { mutableStateListOf<Tache>() }
+                    var showFlameEffect by remember { mutableStateOf(false) }
 
-                    NavHost(navController = navController, startDestination = "liste") {
-                        composable("liste") {
-                            // On trie la liste par date de début avant de l'afficher
-                            ListeTaches(
-                                taches = taches.sortedBy { it.dateDebut },
-                                //Action de bascule entre fait et à faire
-                                onToggleEtat = { indexOriginal ->
-                                    val t = taches[indexOriginal]
-                                    val nouvelEtat = if (t.etat == EtatTache.FAIT) EtatTache.A_FAIRE else EtatTache.FAIT
-                                    taches[indexOriginal] = t.copy(etat = nouvelEtat)
-                                },
-                                // Navigation vers AjoutTache avec un index pour la modification
-                                onNavigateToEdit = { index: Int -> navController.navigate("ajout?index=$index") },
-                                onNavigateToAdd = { navController.navigate("ajout") }
-                            )
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        NavHost(navController = navController, startDestination = "liste") {
+                            composable("liste") {
+                                ListeTaches(
+                                    taches = taches.sortedBy { it.dateDebut },
+                                    onToggleEtat = { indexOriginal ->
+                                        val t = taches[indexOriginal]
+                                        val nouvelEtat = if (t.etat == EtatTache.FAIT) EtatTache.A_FAIRE else EtatTache.FAIT
+                                        taches[indexOriginal] = t.copy(etat = nouvelEtat)
+                                        
+                                        if (nouvelEtat == EtatTache.FAIT) {
+                                            showFlameEffect = true
+                                            vibrer(this@MainActivity)
+                                        }
+                                    },
+                                    onNavigateToEdit = { index: Int -> navController.navigate("ajout?index=$index") },
+                                    onNavigateToAdd = { navController.navigate("ajout") }
+                                )
+                            }
+
+                            composable(
+                                route = "ajout?index={index}",
+                                arguments = listOf(navArgument("index") { nullable = true })
+                            ) { backStackEntry ->
+                                val index = backStackEntry.arguments?.getString("index")?.toIntOrNull()
+                                val tacheExistante = if (index != null) taches[index] else null
+
+                                AjoutTache(
+                                    tacheExistante = tacheExistante,
+                                    onTaskAction = { nouveauTitre, nouvelleDesc, timestampDebut, timestampFin, touteJournee, rappel ->
+                                        val tacheMaj = Tache(
+                                            id = tacheExistante?.id ?: System.currentTimeMillis(),
+                                            titre = nouveauTitre,
+                                            description = nouvelleDesc,
+                                            dateDebut = timestampDebut,
+                                            dateFin = timestampFin,
+                                            etat = tacheExistante?.etat ?: EtatTache.A_FAIRE,
+                                            estTouteLaJournee = touteJournee,
+                                            rappels = rappel
+                                        )
+                                        if (index != null) {
+                                            taches[index] = tacheMaj
+                                        } else {
+                                            taches.add(tacheMaj)
+                                        }
+                                        
+                                        programmerNotifications(this@MainActivity, tacheMaj)
+                                        navController.popBackStack()
+                                    },
+                                    onTaskDelete = {
+                                        if (index != null) {
+                                            annulerNotifications(this@MainActivity, taches[index])
+                                            taches.removeAt(index)
+                                        }
+                                        navController.popBackStack()
+                                    },
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
                         }
 
-                        //Route permettant l'ajout et la modification d'une tâche
-                        composable(
-                            route = "ajout?index={index}",
-                            arguments = listOf(navArgument("index") { nullable = true })
-                        ) { backStackEntry ->
-                            val index = backStackEntry.arguments?.getString("index")?.toIntOrNull()
-                            val tacheExistante = if (index != null) taches[index] else null
-
-                            AjoutTache(
-                                tacheExistante = tacheExistante,
-                                onTaskAction = { nouveauTitre, nouvelleDesc, timestampDebut, timestampFin, touteJournee, rappel ->
-                                    val tacheMaj = Tache(
-                                        titre = nouveauTitre,
-                                        description = nouvelleDesc,
-                                        dateDebut = timestampDebut,
-                                        dateFin = timestampFin,
-                                        etat = tacheExistante?.etat ?: EtatTache.A_FAIRE,
-                                        estTouteLaJournee = touteJournee,
-                                        rappels = rappel
-                                    )
-                                    if (index != null) {
-                                        taches[index] = tacheMaj //Tâche à modifier
-                                    } else {
-                                        taches.add(tacheMaj) // Création de la tâche
-                                    }
-                                    navController.popBackStack()
-                                },
-                                // Supprimer la tâche
-                                onTaskDelete = {
-                                    if (index != null) {
-                                        taches.removeAt(index)
-                                    }
-                                    navController.popBackStack()
-                                },
-                                onBack = { navController.popBackStack() }
-                            )
+                        if (showFlameEffect) {
+                            EffetFlammes(onAnimationFinished = { showFlameEffect = false })
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun vibrer(context: Context) {
+        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+            vibratorManager.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createOneShot(300, VibrationEffect.DEFAULT_AMPLITUDE))
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(300)
+        }
+    }
+
+    private fun programmerNotifications(context: Context, tache: Tache) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+
+        // 1. Programmer le rappel (si configuré)
+        tache.rappels?.let { mins ->
+            val tempsRappel = tache.dateDebut - (mins * 60 * 1000)
+            if (tempsRappel > System.currentTimeMillis()) {
+                val intent = Intent(context, ReminderReceiver::class.java).apply {
+                    putExtra("TYPE", "RAPPEL")
+                    putExtra("TITRE", tache.titre)
+                    putExtra("DESC", tache.description)
+                    putExtra("ID", tache.id)
+                }
+                val pendingIntent = PendingIntent.getBroadcast(
+                    context, tache.id.toInt(), intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                setAlarm(alarmManager, tempsRappel, pendingIntent)
+            }
+        }
+
+        // 2. Programmer la notification de retard
+        if (tache.dateFin > System.currentTimeMillis()) {
+            val intentRetard = Intent(context, ReminderReceiver::class.java).apply {
+                putExtra("TYPE", "RETARD")
+                putExtra("TITRE", tache.titre)
+                putExtra("ID", tache.id)
+            }
+            val pendingIntentRetard = PendingIntent.getBroadcast(
+                context, (tache.id + 1).toInt(), intentRetard,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            setAlarm(alarmManager, tache.dateFin, pendingIntentRetard)
+        }
+    }
+
+    private fun setAlarm(alarmManager: AlarmManager, time: Long, pendingIntent: PendingIntent) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (alarmManager.canScheduleExactAlarms()) {
+                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, time, pendingIntent)
+            } else {
+                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, time, pendingIntent)
+            }
+        } else {
+            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, time, pendingIntent)
+        }
+    }
+
+    private fun annulerNotifications(context: Context, tache: Tache) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        
+        // Annuler rappel
+        val intentRappel = Intent(context, ReminderReceiver::class.java)
+        PendingIntent.getBroadcast(context, tache.id.toInt(), intentRappel, PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE)?.let {
+            alarmManager.cancel(it)
+        }
+        
+        // Annuler retard
+        val intentRetard = Intent(context, ReminderReceiver::class.java)
+        PendingIntent.getBroadcast(context, (tache.id + 1).toInt(), intentRetard, PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE)?.let {
+            alarmManager.cancel(it)
+        }
+    }
+}
+
+@Composable
+fun EffetFlammes(onAnimationFinished: () -> Unit) {
+    val flameCount = 20
+    val iterations = remember { List(flameCount) { it } }
+    var finishedCount by remember { mutableIntStateOf(0) }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        iterations.forEach { _ ->
+            PetiteFlamme(onFinished = {
+                finishedCount++
+                if (finishedCount >= flameCount) onAnimationFinished()
+            })
+        }
+    }
+}
+
+@Composable
+fun PetiteFlamme(onFinished: () -> Unit) {
+    val startX = remember { (0..1000).random().toFloat() }
+    val duration = remember { (1200..2500).random() }
+    val delay = remember { (0..800).random() }
+    
+    val animatableY = remember { Animatable(1.1f) }
+    val animatableAlpha = remember { Animatable(1f) }
+    val animatableScale = remember { Animatable(0.2f) }
+
+    val painter = painterResource(id = R.drawable.ic_flame_custom)
+
+    LaunchedEffect(Unit) {
+        launch {
+            animatableY.animateTo(
+                targetValue = -0.3f,
+                animationSpec = tween(duration, delay, LinearEasing)
+            )
+            onFinished()
+        }
+        launch {
+            animatableAlpha.animateTo(0f, tween(duration, delay, LinearEasing))
+        }
+        launch {
+            animatableScale.animateTo(1.2f, tween(duration, delay, LinearEasing))
+        }
+    }
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val canvasWidth = size.width
+        val canvasHeight = size.height
+        
+        val x = (startX / 1000f) * canvasWidth
+        val y = animatableY.value * canvasHeight
+        
+        translate(left = x, top = y) {
+            scale(animatableScale.value) {
+                drawIntoCanvas {
+                    with(painter) {
+                        draw(
+                            size = androidx.compose.ui.geometry.Size(100.dp.toPx(), 120.dp.toPx()),
+                            alpha = animatableAlpha.value
+                        )
                     }
                 }
             }
@@ -417,7 +591,7 @@ fun AjoutTache(
                 }
                 //Picker pour l'heure de début et de fin désactivé si la tâche dure toute la journée
                 LignePicker(
-                    icon = Icons.Default.Schedule,
+                    icon = Icons.Default.AccessTime,
                     label = "Heure de début",
                     value = if (estTouteJournee) "Toute la journée" else heureDebutTexte,
                     enabled = !estTouteJournee
@@ -435,7 +609,7 @@ fun AjoutTache(
                     ).show()
                 }
                 LignePicker(
-                    icon = Icons.Default.Schedule,
+                    icon = Icons.Default.AccessTime,
                     label = "Heure de fin",
                     value = if (estTouteJournee) "Toute la journée" else heureFinTexte,
                     enabled = !estTouteJournee
@@ -453,7 +627,7 @@ fun AjoutTache(
                     ).show()
                 }
 
-                Divider(color = Color.White.copy(alpha = 0.1f), thickness = 1.dp, modifier = Modifier.padding(vertical = 8.dp))
+                HorizontalDivider(color = Color.White.copy(alpha = 0.1f), thickness = 1.dp, modifier = Modifier.padding(vertical = 8.dp))
 
                 //Zone de Rappel
                 Box {
