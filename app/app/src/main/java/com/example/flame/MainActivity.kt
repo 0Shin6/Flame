@@ -39,11 +39,23 @@ data class Tache(
     val description: String = "",
     val dateDebut: Long,
     val dateFin: Long,
-    val etat: EtatTache = EtatTache.A_FAIRE
+    val etat: EtatTache = EtatTache.A_FAIRE,
+    val estTouteLaJournee: Boolean = false,
+    val rappels: Int? = null
 )
+
+// Design global du projet
+val FlameBackground = Color(0xFF1A0033)
+val FlameCard = Color(0xFF2E004B)
+val FlamePurple = Color(0xFF9D00FF)
 
 fun obtenirEtat(tache: Tache): EtatTache {
     val maintenant = System.currentTimeMillis()
+
+    //Si la tache dure toute la journée, on ne garde de fait ou à faire
+    if (tache.estTouteLaJournee) {
+        return if (tache.etat == EtatTache.FAIT) EtatTache.FAIT else EtatTache.A_FAIRE
+    }
     return when {
         tache.etat == EtatTache.FAIT -> EtatTache.FAIT
         maintenant > tache.dateFin -> EtatTache.EN_RETARD
@@ -51,11 +63,6 @@ fun obtenirEtat(tache: Tache): EtatTache {
         else -> EtatTache.A_FAIRE
     }
 }
-
-// Design global du projet
-val FlameBackground = Color(0xFF1A0033)
-val FlameCard = Color(0xFF2E004B)
-val FlamePurple = Color(0xFF9D00FF)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -95,13 +102,15 @@ class MainActivity : ComponentActivity() {
 
                             AjoutTache(
                                 tacheExistante = tacheExistante,
-                                onTaskAction = { nouveauTitre: String, nouvelleDesc: String, timestampDebut: Long, timestampFin: Long ->
+                                onTaskAction = { nouveauTitre, nouvelleDesc, timestampDebut, timestampFin, touteJournee, rappel ->
                                     val tacheMaj = Tache(
                                         titre = nouveauTitre,
                                         description = nouvelleDesc,
                                         dateDebut = timestampDebut,
                                         dateFin = timestampFin,
-                                        etat = tacheExistante?.etat ?: EtatTache.A_FAIRE
+                                        etat = tacheExistante?.etat ?: EtatTache.A_FAIRE,
+                                        estTouteLaJournee = touteJournee,
+                                        rappels = rappel
                                     )
                                     if (index != null) {
                                         taches[index] = tacheMaj //Tâche à modifier
@@ -268,16 +277,18 @@ fun BadgeEtat(tache: Tache) {
     val maintenant = System.currentTimeMillis()
     val etatReel = obtenirEtat(tache)
 
-    val (label, color) = when (etatReel) {
-        EtatTache.FAIT -> {
-            if (maintenant < tache.dateDebut) "En avance" to Color(0xFFE91E63)
+    val (label, color) = when {
+        etatReel == EtatTache.FAIT -> {
+            if (!tache.estTouteLaJournee && maintenant < tache.dateDebut) "En avance" to Color(0xFFE91E63)
             else "Fait" to Color(0xFFB39DDB)
         }
-        EtatTache.EN_RETARD -> "En retard" to Color(0xFF9C27B0)
-        EtatTache.EN_COURS -> "En cours" to Color(0xFFFF9800)
+        tache.estTouteLaJournee -> "Aujourd'hui" to FlamePurple
+        etatReel == EtatTache.EN_RETARD -> "En retard" to Color(0xFF9C27B0)
+        etatReel == EtatTache.EN_COURS -> "En cours" to Color(0xFFFF9800)
         else -> {
             val differenceMn = (tache.dateDebut - maintenant) / 60000
             if (differenceMn < 60) {
+                //Débute dans moins d'1h
                 "Dans ${differenceMn}mn" to Color(0xFF03A9F4)
             } else {
                 val cal = Calendar.getInstance().apply { timeInMillis = tache.dateDebut }
@@ -303,12 +314,16 @@ fun BadgeEtat(tache: Tache) {
 @Composable
 fun AjoutTache(
     tacheExistante: Tache? = null,
-    onTaskAction: (String, String, Long, Long) -> Unit,
+    onTaskAction: (String, String, Long, Long, Boolean, Int?) -> Unit,
     onTaskDelete: () -> Unit,
     onBack: () -> Unit
 ) {
+    //Initialisation des états avec les données de la tâche existante si on est en modification
     var titre by remember { mutableStateOf(tacheExistante?.titre ?: "") }
     var desc by remember { mutableStateOf(tacheExistante?.description ?: "") }
+    var estTouteJournee by remember { mutableStateOf(tacheExistante?.estTouteLaJournee ?: false) }
+    var rappelSelectionne by remember { mutableStateOf(tacheExistante?.rappels) }
+    var menuRappelOuvert by remember { mutableStateOf(false) }
 
     val calDebut = remember {
         Calendar.getInstance().apply {
@@ -322,6 +337,7 @@ fun AjoutTache(
     }
     val context = LocalContext.current
 
+    // Initialisation des zones pour la date et les heures
     var dateTexte by remember { mutableStateOf(tacheExistante?.let { "${calDebut.get(Calendar.DAY_OF_MONTH)}/${calDebut.get(Calendar.MONTH) + 1}" } ?: "Choisir la date") }
     var heureDebutTexte by remember { mutableStateOf(tacheExistante?.let { String.format("%02d:%02d", calDebut.get(Calendar.HOUR_OF_DAY), calDebut.get(Calendar.MINUTE)) } ?: "Choisir l'heure de début") }
     var heureFinTexte by remember { mutableStateOf(tacheExistante?.let { String.format("%02d:%02d", calFin.get(Calendar.HOUR_OF_DAY), calFin.get(Calendar.MINUTE)) } ?: "Choisir l'heure de fin") }
@@ -333,6 +349,7 @@ fun AjoutTache(
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        //Changement du titre de la page en fonction du contexte
         Text(
             if (tacheExistante == null) "Créer une tâche" else "Modifier la tâche",
             color = Color.White,
@@ -371,6 +388,14 @@ fun AjoutTache(
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        //Option toute la journée
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Toute la journée", color = Color.White)
+            Switch(checked = estTouteJournee, onCheckedChange = { estTouteJournee = it }, colors = SwitchDefaults.colors(checkedThumbColor = FlamePurple))
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
@@ -390,7 +415,13 @@ fun AjoutTache(
                         calDebut.get(Calendar.DAY_OF_MONTH)
                     ).show()
                 }
-                LignePicker(Icons.Default.Schedule, "Heure de début", heureDebutTexte) {
+                //Picker pour l'heure de début et de fin désactivé si la tâche dure toute la journée
+                LignePicker(
+                    icon = Icons.Default.Schedule,
+                    label = "Heure de début",
+                    value = if (estTouteJournee) "Toute la journée" else heureDebutTexte,
+                    enabled = !estTouteJournee
+                ) {
                     TimePickerDialog(
                         context,
                         { _, h, m ->
@@ -403,7 +434,12 @@ fun AjoutTache(
                         true
                     ).show()
                 }
-                LignePicker(Icons.Default.Schedule, "Heure de fin", heureFinTexte) {
+                LignePicker(
+                    icon = Icons.Default.Schedule,
+                    label = "Heure de fin",
+                    value = if (estTouteJournee) "Toute la journée" else heureFinTexte,
+                    enabled = !estTouteJournee
+                ) {
                     TimePickerDialog(
                         context,
                         { _, h, m ->
@@ -415,6 +451,26 @@ fun AjoutTache(
                         calFin.get(Calendar.MINUTE),
                         true
                     ).show()
+                }
+
+                Divider(color = Color.White.copy(alpha = 0.1f), thickness = 1.dp, modifier = Modifier.padding(vertical = 8.dp))
+
+                //Zone de Rappel
+                Box {
+                    LignePicker(
+                        icon = Icons.Default.NotificationsActive,
+                        label = "Rappel",
+                        value = rappelSelectionne?.let { if (it >= 60) "${it/60}h avant" else "${it}mn avant" } ?: "Aucun"
+                    ) { menuRappelOuvert = true }
+
+                    DropdownMenu(expanded = menuRappelOuvert, onDismissRequest = { menuRappelOuvert = false }, modifier = Modifier.background(FlameCard)) {
+                        listOf(null, 5, 15, 30, 60, 120).forEach { mins ->
+                            DropdownMenuItem(
+                                text = { Text(mins?.let { if (it >= 60) "${it/60}h avant" else "${it}mn avant" } ?: "Aucun", color = Color.White) },
+                                onClick = { rappelSelectionne = mins; menuRappelOuvert = false }
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -443,7 +499,9 @@ fun AjoutTache(
                         titre,
                         desc,
                         calDebut.timeInMillis,
-                        calFin.timeInMillis
+                        calFin.timeInMillis,
+                        estTouteJournee,
+                        rappelSelectionne
                     )
                 },
                 modifier = Modifier
@@ -452,6 +510,7 @@ fun AjoutTache(
                 colors = ButtonDefaults.buttonColors(containerColor = FlamePurple),
                 shape = RoundedCornerShape(28.dp)
             ) {
+                //Texte du bouton s'adaptant au contexte
                 Text(if (tacheExistante == null) "Créer" else "Enregistrer")
             }
 
@@ -475,18 +534,19 @@ fun LignePicker(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     value: String,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() }
+            .clickable(enabled = enabled) { onClick() }
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = null, tint = Color.White)
+        Icon(icon, contentDescription = null, tint = if (enabled) Color.White else Color.Gray)
         Spacer(modifier = Modifier.width(16.dp))
-        Text(label, color = Color.White, modifier = Modifier.weight(1f))
-        Text(value, color = Color.White, fontWeight = FontWeight.Bold)
+        Text(label, color = if (enabled) Color.White else Color.Gray, modifier = Modifier.weight(1f))
+        Text(value, color = if (enabled) Color.White else Color.Gray, fontWeight = FontWeight.Bold)
     }
 }
