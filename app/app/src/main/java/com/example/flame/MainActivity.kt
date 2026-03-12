@@ -13,17 +13,18 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -39,6 +40,7 @@ import com.example.flame.ui.theme.FlameTheme
 import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.delay
+import java.util.*
 
 class Storage(context: Context) {
     private val prefs = context.getSharedPreferences("flame_prefs", Context.MODE_PRIVATE)
@@ -70,6 +72,7 @@ class Storage(context: Context) {
 fun NavBar(navController: NavController) {
     val items = listOf(
         Triple("liste", "Tâches", Icons.Default.List),
+        Triple("calendrier", "Calendrier", Icons.Default.DateRange),
         Triple("objectifs", "Objectifs", Icons.Default.Star)
     )
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -78,32 +81,42 @@ fun NavBar(navController: NavController) {
     val routesSansNavbar = listOf("ajout", "ajout_objectif", "detail_objectif/{id}")
     if (currentRoute?.split("?")?.get(0) in routesSansNavbar || currentRoute in routesSansNavbar) return
 
-    NavigationBar(
-        containerColor = FlameCard,
-        modifier = Modifier.height(64.dp), // Réduction de la taille
-        tonalElevation = 0.dp
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 20.dp)
     ) {
-        items.forEach { (route, label, icon) ->
-            NavigationBarItem(
-                icon = { Icon(icon, contentDescription = null) },
-                label = { Text(label, fontSize = 10.sp) },
-                selected = currentRoute == route,
-                alwaysShowLabel = true, // Force l'affichage du texte
-                onClick = {
-                    navController.navigate(route) {
-                        popUpTo(navController.graph.startDestinationId) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = FlamePurple,
-                    selectedTextColor = FlamePurple,
-                    unselectedIconColor = Color.White.copy(0.5f),
-                    unselectedTextColor = Color.White.copy(0.5f),
-                    indicatorColor = Color.Transparent
+        NavigationBar(
+            containerColor = FlameCard,
+            modifier = Modifier
+                .height(72.dp)
+                .clip(RoundedCornerShape(36.dp)),
+            tonalElevation = 0.dp,
+            windowInsets = WindowInsets(0, 0, 0, 0)
+        ) {
+            items.forEach { (route, label, icon) ->
+                val isSelected = currentRoute == route
+                NavigationBarItem(
+                    icon = { Icon(icon, contentDescription = null) },
+                    label = { Text(label, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                    selected = isSelected,
+                    alwaysShowLabel = true,
+                    onClick = {
+                        navController.navigate(route) {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = FlamePurple,
+                        selectedTextColor = FlamePurple,
+                        unselectedIconColor = Color.White.copy(0.5f),
+                        unselectedTextColor = Color.White.copy(0.5f),
+                        indicatorColor = Color.Transparent
+                    )
                 )
-            )
+            }
         }
     }
 }
@@ -160,6 +173,20 @@ class MainActivity : ComponentActivity() {
                                                 onNavigateToAdd = { navController.navigate("ajout") }
                                             )
                                         }
+                                    }
+                                    composable("calendrier") {
+                                        CalendrierScreen(
+                                            taches = taches.toList(),
+                                            onToggleEtat = { t ->
+                                                val idx = taches.indexOfFirst { it.id == t.id }
+                                                if (idx != -1) {
+                                                    val next = if (taches[idx].etat == EtatTache.FAIT) EtatTache.A_FAIRE else EtatTache.FAIT
+                                                    taches[idx] = taches[idx].copy(etat = next)
+                                                    if (next == EtatTache.FAIT) { showFlameEffect = true; vibrer(this@MainActivity) }
+                                                }
+                                            },
+                                            onNavigateToEdit = { t -> navController.navigate("ajout?index=${taches.indexOfFirst { it.id == t.id }}") }
+                                        )
                                     }
                                     composable("objectifs") {
                                         ObjectifsScreen(
