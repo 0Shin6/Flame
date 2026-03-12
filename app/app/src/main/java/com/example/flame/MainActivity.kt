@@ -134,7 +134,7 @@ class MainActivity : ComponentActivity() {
                     var showFlameEffect by remember { mutableStateOf(false) }
 
                     Scaffold(
-                        bottomBar = { BottomBar(navController) },
+                        bottomBar = { NavBar(navController) },
                         containerColor = FlameBackground
                     ) { padding ->
                         Box(modifier = Modifier.padding(padding).fillMaxSize()) {
@@ -199,8 +199,8 @@ class MainActivity : ComponentActivity() {
                                     AjoutTacheScreen(
                                         tacheExistante = exist,
                                         objectifs = objectifs.toList(),
-                                        onTaskAction = { tit, desc, deb, fin, tj, rap, per, prio, objId ->
-                                            val tMaj = Tache(id = exist?.id ?: System.currentTimeMillis(), titre = tit, description = desc, dateDebut = deb, dateFin = fin, etat = exist?.etat ?: EtatTache.A_FAIRE, estTouteLaJournee = tj, rappels = rap, periodicite = per, priorite = prio, objectifId = objId)
+                                        onTaskAction = { tit, desc, img, deb, fin, tj, rap, per, prio, objId ->
+                                            val tMaj = Tache(id = exist?.id ?: System.currentTimeMillis(), titre = tit, description = desc, imageUri = img, dateDebut = deb, dateFin = fin, etat = exist?.etat ?: EtatTache.A_FAIRE, estTouteLaJournee = tj, rappels = rap, periodicite = per, priorite = prio, objectifId = objId)
                                             if (idx != null && idx in taches.indices) taches[idx] = tMaj else taches.add(tMaj)
                                             programmerNotifications(this@MainActivity, tMaj)
                                             navController.popBackStack()
@@ -217,31 +217,46 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+}
 
-    private fun vibrer(context: Context) {
-        val v = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator else @Suppress("DEPRECATION") context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) v.vibrate(VibrationEffect.createOneShot(300, VibrationEffect.DEFAULT_AMPLITUDE)) else @Suppress("DEPRECATION") v.vibrate(300)
+fun vibrer(context: Context) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+        vibratorManager.defaultVibrator.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
+    } else {
+        @Suppress("DEPRECATION")
+        val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        vibrator.vibrate(100)
+    }
+}
+
+fun programmerNotifications(context: Context, tache: Tache) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        if (!alarmManager.canScheduleExactAlarms()) {
+            val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+            context.startActivity(intent)
+            return
+        }
     }
 
-    private fun programmerNotifications(context: Context, t: Tache) {
-        val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !am.canScheduleExactAlarms()) { context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)); return }
-        t.rappels?.let { mins ->
-            val time = t.dateDebut - (mins * 60 * 1000)
-            if (time > System.currentTimeMillis()) {
-                val intent = Intent(context, ReminderReceiver::class.java).apply { putExtra("TYPE", "RAPPEL"); putExtra("TITRE", t.titre); putExtra("DESC", t.description); putExtra("ID", t.id) }
-                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, time, PendingIntent.getBroadcast(context, t.id.toInt(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+    val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+    tache.rappels?.let { mins ->
+        val time = tache.dateDebut - mins * 60000
+        if (time > System.currentTimeMillis()) {
+            val intent = Intent(context, ReminderReceiver::class.java).apply {
+                putExtra("titre", tache.titre)
+                putExtra("msg", "Commence dans $mins min")
             }
-        }
-        if (t.dateFin > System.currentTimeMillis()) {
-            val intentRetard = Intent(context, ReminderReceiver::class.java).apply { putExtra("TYPE", "RETARD"); putExtra("TITRE", t.titre); putExtra("ID", t.id) }
-            am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, t.dateFin, PendingIntent.getBroadcast(context, (t.id + 1).toInt(), intentRetard, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+            val pi = PendingIntent.getBroadcast(context, tache.id.toInt(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, time, pi)
         }
     }
+}
 
-    private fun annulerNotifications(context: Context, t: Tache) {
-        val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        PendingIntent.getBroadcast(context, t.id.toInt(), Intent(context, ReminderReceiver::class.java), PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE)?.let { am.cancel(it) }
-        PendingIntent.getBroadcast(context, (t.id + 1).toInt(), Intent(context, ReminderReceiver::class.java), PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE)?.let { am.cancel(it) }
-    }
+fun annulerNotifications(context: Context, tache: Tache) {
+    val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+    val intent = Intent(context, ReminderReceiver::class.java)
+    val pi = PendingIntent.getBroadcast(context, tache.id.toInt(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    alarmManager.cancel(pi)
 }

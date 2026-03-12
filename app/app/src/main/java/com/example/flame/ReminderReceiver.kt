@@ -38,7 +38,6 @@ class ReminderReceiver : BroadcastReceiver() {
             .setAutoCancel(true)
             .build()
 
-        // Utiliser des IDs différents pour ne pas écraser les notifications
         val finalId = if (type == "RETARD") (id + 1).toInt() else id.toInt()
         notificationManager.notify(finalId, notification)
     }

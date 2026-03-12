@@ -15,6 +15,7 @@ data class Tache(
     val id: Long = System.currentTimeMillis(),
     val titre: String,
     val description: String = "",
+    val imageUri: String? = null,
     val dateDebut: Long,
     val dateFin: Long,
     val etat: EtatTache = EtatTache.A_FAIRE,
@@ -29,7 +30,7 @@ data class Objectif(
     val id: Long = System.currentTimeMillis(),
     val titre: String,
     val description: String = "",
-    val emoji: String = "🎯"
+    val emoji: String = ""
 )
 
 fun obtenirEtat(tache: Tache): EtatTache {

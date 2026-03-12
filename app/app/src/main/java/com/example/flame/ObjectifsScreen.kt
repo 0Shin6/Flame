@@ -200,7 +200,7 @@ fun AjoutObjectifScreen(
 ) {
     var titre by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
-    var emoji by remember { mutableStateOf("🎯") }
+    var emoji by remember { mutableStateOf("") }
 
     Column(
         modifier = Modifier

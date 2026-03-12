@@ -2,6 +2,9 @@ package com.example.flame
 
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -18,11 +21,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.flame.ui.theme.FlameBackground
 import com.example.flame.ui.theme.FlameCard
 import com.example.flame.ui.theme.FlamePurple
@@ -178,12 +184,13 @@ fun ListeTachesScreen(
 fun AjoutTacheScreen(
     tacheExistante: Tache? = null,
     objectifs: List<Objectif>,
-    onTaskAction: (String, String, Long, Long, Boolean, Int?, Periodicite, Priorite, Long?) -> Unit,
+    onTaskAction: (String, String, String?, Long, Long, Boolean, Int?, Periodicite, Priorite, Long?) -> Unit,
     onTaskDelete: () -> Unit,
     onBack: () -> Unit
 ) {
     var titre by remember { mutableStateOf(tacheExistante?.titre ?: "") }
     var desc by remember { mutableStateOf(tacheExistante?.description ?: "") }
+    var imageUri by remember { mutableStateOf(tacheExistante?.imageUri) }
     var estTouteJournee by remember { mutableStateOf(tacheExistante?.estTouteLaJournee ?: false) }
     var rappelSelectionne by remember { mutableStateOf(tacheExistante?.rappels) }
     var perioSelectionnee by remember { mutableStateOf(tacheExistante?.periodicite ?: Periodicite.AUCUNE) }
@@ -201,6 +208,10 @@ fun AjoutTacheScreen(
     var heureDebutTexte by remember { mutableStateOf(tacheExistante?.let { String.format("%02d:%02d", calDebut.get(Calendar.HOUR_OF_DAY), calDebut.get(Calendar.MINUTE)) } ?: "Choisir") }
     var heureFinTexte by remember { mutableStateOf(tacheExistante?.let { String.format("%02d:%02d", calFin.get(Calendar.HOUR_OF_DAY), calFin.get(Calendar.MINUTE)) } ?: "Choisir") }
 
+    val launcher = rememberLauncherForActivityResult(contract = ActivityResultContracts.GetContent()) { uri: Uri? ->
+        imageUri = uri?.toString()
+    }
+
     val scrollState = rememberScrollState()
 
     Column(
@@ -216,6 +227,44 @@ fun AjoutTacheScreen(
         OutlinedTextField(value = titre, onValueChange = { titre = it }, label = { Text("Titre", color = Color.White.copy(0.7f)) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = FlamePurple, focusedTextColor = Color.White, unfocusedTextColor = Color.White))
         Spacer(modifier = Modifier.height(16.dp))
         OutlinedTextField(value = desc, onValueChange = { desc = it }, label = { Text("Description", color = Color.White.copy(0.7f)) }, modifier = Modifier.fillMaxWidth().height(100.dp), shape = RoundedCornerShape(16.dp), colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = FlamePurple, focusedTextColor = Color.White, unfocusedTextColor = Color.White))
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // Image section
+        if (imageUri != null) {
+            Box(modifier = Modifier.fillMaxWidth().height(200.dp).clip(RoundedCornerShape(16.dp))) {
+                AsyncImage(
+                    model = imageUri,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+                IconButton(
+                    onClick = { imageUri = null },
+                    modifier = Modifier.align(Alignment.TopEnd).background(Color.Black.copy(0.5f), CircleShape)
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = "Retirer la photo", tint = Color.White)
+                }
+                IconButton(
+                    onClick = { launcher.launch("image/*") },
+                    modifier = Modifier.align(Alignment.BottomEnd).background(Color.Black.copy(0.5f), CircleShape)
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = "Modifier la photo", tint = Color.White)
+                }
+            }
+        } else {
+            OutlinedButton(
+                onClick = { launcher.launch("image/*") },
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                shape = RoundedCornerShape(16.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, FlamePurple)
+            ) {
+                Icon(Icons.Default.AddAPhoto, contentDescription = null, tint = Color.White)
+                Spacer(Modifier.width(8.dp))
+                Text("Ajouter une photo", color = Color.White)
+            }
+        }
+
         Spacer(modifier = Modifier.height(16.dp))
         
         Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = FlameCard)) {
@@ -293,7 +342,7 @@ fun AjoutTacheScreen(
 
         Row(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Button(
-                onClick = { if (titre.isNotBlank()) onTaskAction(titre, desc, calDebut.timeInMillis, calFin.timeInMillis, estTouteJournee, rappelSelectionne, perioSelectionnee, prioriteSelectionnee, objectifIdSelectionne) },
+                onClick = { if (titre.isNotBlank()) onTaskAction(titre, desc, imageUri, calDebut.timeInMillis, calFin.timeInMillis, estTouteJournee, rappelSelectionne, perioSelectionnee, prioriteSelectionnee, objectifIdSelectionne) },
                 modifier = Modifier.weight(1f).height(56.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = FlamePurple),
                 shape = RoundedCornerShape(28.dp)
