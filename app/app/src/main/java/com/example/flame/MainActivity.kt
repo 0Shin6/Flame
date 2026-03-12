@@ -39,7 +39,6 @@ import com.example.flame.ui.theme.FlameTheme
 import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.delay
-import java.util.*
 
 class Storage(context: Context) {
     private val prefs = context.getSharedPreferences("flame_prefs", Context.MODE_PRIVATE)
@@ -118,99 +117,105 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             FlameTheme {
-                Surface(modifier = Modifier.fillMaxSize(), color = FlameBackground) {
-                    val navController = rememberNavController()
-                    val taches = remember { mutableStateListOf<Tache>().apply { addAll(storage.loadTaches()) } }
-                    val objectifs = remember { mutableStateListOf<Objectif>().apply { addAll(storage.loadObjectifs()) } }
+                var showSplash by remember { mutableStateOf(true) }
 
-                    LaunchedEffect(taches.toList()) { storage.saveTaches(taches.toList()) }
-                    LaunchedEffect(objectifs.toList()) { storage.saveObjectifs(objectifs.toList()) }
+                if (showSplash) {
+                    LoadingScreen(onFinished = { showSplash = false })
+                } else {
+                    Surface(modifier = Modifier.fillMaxSize(), color = FlameBackground) {
+                        val navController = rememberNavController()
+                        val taches = remember { mutableStateListOf<Tache>().apply { addAll(storage.loadTaches()) } }
+                        val objectifs = remember { mutableStateListOf<Objectif>().apply { addAll(storage.loadObjectifs()) } }
 
-                    var ticker by remember { mutableLongStateOf(System.currentTimeMillis()) }
-                    LaunchedEffect(Unit) {
-                        while(true) { delay(60000); ticker = System.currentTimeMillis() }
-                    }
+                        LaunchedEffect(taches.toList()) { storage.saveTaches(taches.toList()) }
+                        LaunchedEffect(objectifs.toList()) { storage.saveObjectifs(objectifs.toList()) }
 
-                    var showFlameEffect by remember { mutableStateOf(false) }
+                        var ticker by remember { mutableLongStateOf(System.currentTimeMillis()) }
+                        LaunchedEffect(Unit) {
+                            while(true) { delay(60000); ticker = System.currentTimeMillis() }
+                        }
 
-                    Scaffold(
-                        bottomBar = { NavBar(navController) },
-                        containerColor = FlameBackground
-                    ) { padding ->
-                        Box(modifier = Modifier.padding(padding).fillMaxSize()) {
-                            NavHost(navController = navController, startDestination = "liste") {
-                                composable("liste") {
-                                    key(ticker) {
-                                        ListeTachesScreen(
-                                            taches = taches.toList().sortedWith(compareByDescending<Tache> { it.priorite.valeur }.thenBy { it.dateDebut }),
-                                            onToggleEtat = { t ->
-                                                val idx = taches.indexOfFirst { it.id == t.id }
-                                                if (idx != -1) {
-                                                    val next = if (taches[idx].etat == EtatTache.FAIT) EtatTache.A_FAIRE else EtatTache.FAIT
-                                                    taches[idx] = taches[idx].copy(etat = next)
-                                                    if (next == EtatTache.FAIT) { showFlameEffect = true; vibrer(this@MainActivity) }
+                        var showFlameEffect by remember { mutableStateOf(false) }
+
+                        Scaffold(
+                            bottomBar = { NavBar(navController) },
+                            containerColor = FlameBackground
+                        ) { padding ->
+                            Box(modifier = Modifier.padding(padding).fillMaxSize()) {
+                                NavHost(navController = navController, startDestination = "liste") {
+                                    composable("liste") {
+                                        key(ticker) {
+                                            ListeTachesScreen(
+                                                taches = taches.toList().sortedWith(compareByDescending<Tache> { it.priorite.valeur }.thenBy { it.dateDebut }),
+                                                onToggleEtat = { t ->
+                                                    val idx = taches.indexOfFirst { it.id == t.id }
+                                                    if (idx != -1) {
+                                                        val next = if (taches[idx].etat == EtatTache.FAIT) EtatTache.A_FAIRE else EtatTache.FAIT
+                                                        taches[idx] = taches[idx].copy(etat = next)
+                                                        if (next == EtatTache.FAIT) { showFlameEffect = true; vibrer(this@MainActivity) }
+                                                    }
+                                                },
+                                                onDeleteTache = { t -> annulerNotifications(this@MainActivity, t); taches.removeIf { it.id == t.id } },
+                                                onNavigateToEdit = { t -> navController.navigate("ajout?index=${taches.indexOfFirst { it.id == t.id }}") },
+                                                onNavigateToAdd = { navController.navigate("ajout") }
+                                            )
+                                        }
+                                    }
+                                    composable("objectifs") {
+                                        ObjectifsScreen(
+                                            objectifs = objectifs.toList(),
+                                            taches = taches.toList(),
+                                            onNavigateToAdd = { navController.navigate("ajout_objectif") },
+                                            onNavigateToDetail = { obj -> navController.navigate("detail_objectif/${obj.id}") }
+                                        )
+                                    }
+                                    composable("ajout_objectif") {
+                                        AjoutObjectifScreen(
+                                            onSave = { tit, desc, emj -> objectifs.add(Objectif(titre = tit, description = desc, emoji = emj)); navController.popBackStack() },
+                                            onBack = { navController.popBackStack() }
+                                        )
+                                    }
+                                    composable(
+                                        route = "detail_objectif/{id}",
+                                        arguments = listOf(navArgument("id") { type = androidx.navigation.NavType.LongType })
+                                    ) { bse ->
+                                        val id = bse.arguments?.getLong("id")
+                                        val obj = objectifs.find { it.id == id }
+                                        if (obj != null) {
+                                            DetailObjectifScreen(
+                                                objectif = obj,
+                                                taches = taches.filter { it.objectifId == obj.id }.sortedWith(compareByDescending<Tache> { it.priorite.valeur }.thenBy { it.dateDebut }),
+                                                onBack = { navController.popBackStack() },
+                                                onToggleEtat = { t ->
+                                                    val idx = taches.indexOfFirst { it.id == t.id }
+                                                    if (idx != -1) {
+                                                        val next = if (taches[idx].etat == EtatTache.FAIT) EtatTache.A_FAIRE else EtatTache.FAIT
+                                                        taches[idx] = taches[idx].copy(etat = next)
+                                                        if (next == EtatTache.FAIT) { showFlameEffect = true; vibrer(this@MainActivity) }
+                                                    }
                                                 }
+                                            )
+                                        }
+                                    }
+                                    composable("ajout?index={index}", arguments = listOf(navArgument("index") { nullable = true })) { bse ->
+                                        val idx = bse.arguments?.getString("index")?.toIntOrNull()
+                                        val exist = if (idx != null && idx in taches.indices) taches[idx] else null
+                                        AjoutTacheScreen(
+                                            tacheExistante = exist,
+                                            objectifs = objectifs.toList(),
+                                            onTaskAction = { tit, desc, img, deb, fin, tj, rap, per, prio, objId ->
+                                                val tMaj = Tache(id = exist?.id ?: System.currentTimeMillis(), titre = tit, description = desc, imageUri = img, dateDebut = deb, dateFin = fin, etat = exist?.etat ?: EtatTache.A_FAIRE, estTouteLaJournee = tj, rappels = rap, periodicite = per, priorite = prio, objectifId = objId)
+                                                if (idx != null && idx in taches.indices) taches[idx] = tMaj else taches.add(tMaj)
+                                                programmerNotifications(this@MainActivity, tMaj)
+                                                navController.popBackStack()
                                             },
-                                            onDeleteTache = { t -> annulerNotifications(this@MainActivity, t); taches.removeIf { it.id == t.id } },
-                                            onNavigateToEdit = { t -> navController.navigate("ajout?index=${taches.indexOfFirst { it.id == t.id }}") },
-                                            onNavigateToAdd = { navController.navigate("ajout") }
+                                            onTaskDelete = { if (idx != null && idx in taches.indices) { annulerNotifications(this@MainActivity, taches[idx]); taches.removeAt(idx) }; navController.popBackStack() },
+                                            onBack = { navController.popBackStack() }
                                         )
                                     }
                                 }
-                                composable("objectifs") {
-                                    ObjectifsScreen(
-                                        objectifs = objectifs.toList(),
-                                        taches = taches.toList(),
-                                        onNavigateToAdd = { navController.navigate("ajout_objectif") },
-                                        onNavigateToDetail = { obj -> navController.navigate("detail_objectif/${obj.id}") }
-                                    )
-                                }
-                                composable("ajout_objectif") {
-                                    AjoutObjectifScreen(
-                                        onSave = { tit, desc, emj -> objectifs.add(Objectif(titre = tit, description = desc, emoji = emj)); navController.popBackStack() },
-                                        onBack = { navController.popBackStack() }
-                                    )
-                                }
-                                composable(
-                                    route = "detail_objectif/{id}",
-                                    arguments = listOf(navArgument("id") { type = androidx.navigation.NavType.LongType })
-                                ) { bse ->
-                                    val id = bse.arguments?.getLong("id")
-                                    val obj = objectifs.find { it.id == id }
-                                    if (obj != null) {
-                                        DetailObjectifScreen(
-                                            objectif = obj,
-                                            taches = taches.filter { it.objectifId == obj.id }.sortedWith(compareByDescending<Tache> { it.priorite.valeur }.thenBy { it.dateDebut }),
-                                            onBack = { navController.popBackStack() },
-                                            onToggleEtat = { t ->
-                                                val idx = taches.indexOfFirst { it.id == t.id }
-                                                if (idx != -1) {
-                                                    val next = if (taches[idx].etat == EtatTache.FAIT) EtatTache.A_FAIRE else EtatTache.FAIT
-                                                    taches[idx] = taches[idx].copy(etat = next)
-                                                    if (next == EtatTache.FAIT) { showFlameEffect = true; vibrer(this@MainActivity) }
-                                                }
-                                            }
-                                        )
-                                    }
-                                }
-                                composable("ajout?index={index}", arguments = listOf(navArgument("index") { nullable = true })) { bse ->
-                                    val idx = bse.arguments?.getString("index")?.toIntOrNull()
-                                    val exist = if (idx != null && idx in taches.indices) taches[idx] else null
-                                    AjoutTacheScreen(
-                                        tacheExistante = exist,
-                                        objectifs = objectifs.toList(),
-                                        onTaskAction = { tit, desc, img, deb, fin, tj, rap, per, prio, objId ->
-                                            val tMaj = Tache(id = exist?.id ?: System.currentTimeMillis(), titre = tit, description = desc, imageUri = img, dateDebut = deb, dateFin = fin, etat = exist?.etat ?: EtatTache.A_FAIRE, estTouteLaJournee = tj, rappels = rap, periodicite = per, priorite = prio, objectifId = objId)
-                                            if (idx != null && idx in taches.indices) taches[idx] = tMaj else taches.add(tMaj)
-                                            programmerNotifications(this@MainActivity, tMaj)
-                                            navController.popBackStack()
-                                        },
-                                        onTaskDelete = { if (idx != null && idx in taches.indices) { annulerNotifications(this@MainActivity, taches[idx]); taches.removeAt(idx) }; navController.popBackStack() },
-                                        onBack = { navController.popBackStack() }
-                                    )
-                                }
+                                if (showFlameEffect) EffetFlammes(onAnimationFinished = { showFlameEffect = false })
                             }
-                            if (showFlameEffect) EffetFlammes(onAnimationFinished = { showFlameEffect = false })
                         }
                     }
                 }

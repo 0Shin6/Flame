@@ -4,6 +4,7 @@ package com.example.flame
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -20,9 +21,50 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.flame.ui.theme.FlameBackground
 import com.example.flame.ui.theme.FlamePurple
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.*
+
+@Composable
+fun LoadingScreen(onFinished: () -> Unit) {
+    LaunchedEffect(Unit) {
+        delay(3000)
+        onFinished()
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(FlameBackground),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Image(
+                    painter = painterResource(id = R.drawable.ic_flame_custom),
+                    contentDescription = null,
+                    modifier = Modifier.size(100.dp)
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(
+                    text = "Flame",
+                    color = Color.White,
+                    fontSize = 64.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Spacer(modifier = Modifier.height(32.dp))
+            Text(
+                text = "Quel est ton objectif du jour ?",
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+}
 
 @Composable
 fun BadgeEtat(tache: Tache) {
