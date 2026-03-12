@@ -182,7 +182,7 @@ class MainActivity : ComponentActivity() {
                                     composable("liste") {
                                         key(ticker) {
                                             ListeTachesScreen(
-                                                taches = taches.toList().sortedWith(compareByDescending<Tache> { it.priorite.valeur }.thenBy { it.dateDebut }),
+                                                taches = taches.toList().sortedWith(compareBy<Tache> { it.dateDebut }.thenByDescending { it.priorite.valeur }),
                                                 onToggleEtat = onToggleEtat,
                                                 onDeleteTache = { t -> annulerNotifications(this@MainActivity, t); taches.removeIf { it.id == t.id } },
                                                 onNavigateToEdit = { t -> navController.navigate("ajout?index=${taches.indexOfFirst { it.id == t.id }}") },
@@ -233,7 +233,7 @@ class MainActivity : ComponentActivity() {
                                         if (obj != null) {
                                             DetailObjectifScreen(
                                                 objectif = obj,
-                                                taches = taches.filter { it.objectifId == obj.id }.sortedWith(compareByDescending<Tache> { it.priorite.valeur }.thenBy { it.dateDebut }),
+                                                taches = taches.filter { it.objectifId == obj.id }.sortedWith(compareBy<Tache> { it.dateDebut }.thenByDescending { it.priorite.valeur }),
                                                 onBack = { navController.popBackStack() },
                                                 onDelete = {
                                                     objectifs.removeIf { it.id == obj.id }
