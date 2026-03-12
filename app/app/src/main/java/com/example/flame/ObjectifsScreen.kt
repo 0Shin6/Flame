@@ -11,10 +11,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -116,25 +113,49 @@ fun DetailObjectifScreen(
     objectif: Objectif,
     taches: List<Tache>,
     onBack: () -> Unit,
+    onDelete: () -> Unit,
+    onEdit: () -> Unit,
     onToggleEtat: (Tache) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.Default.ArrowBack, contentDescription = null, tint = Color.White)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = null, tint = Color.White)
+                }
+                Text(
+                    text = objectif.titre,
+                    color = Color.White,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
-            Text(
-                text = objectif.titre,
-                color = Color.White,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold
-            )
+            Row {
+                IconButton(
+                    onClick = onEdit,
+                    modifier = Modifier.background(Color.White.copy(0.1f), CircleShape)
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = "Modifier", tint = Color.White)
+                }
+                Spacer(Modifier.width(8.dp))
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.background(Color.Red.copy(0.2f), CircleShape)
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = "Supprimer", tint = Color.Red)
+                }
+            }
         }
         Spacer(Modifier.height(8.dp))
         Text(
             text = objectif.description,
             color = Color.White.copy(0.7f),
-            fontSize = 14.sp
+            fontSize = 14.sp,
+            modifier = Modifier.padding(start = 48.dp)
         )
         Spacer(Modifier.height(24.dp))
 
@@ -195,12 +216,13 @@ fun DetailObjectifScreen(
 
 @Composable
 fun AjoutObjectifScreen(
+    objectifExistant: Objectif? = null,
     onSave: (String, String, String) -> Unit,
     onBack: () -> Unit
 ) {
-    var titre by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var emoji by remember { mutableStateOf("") }
+    var titre by remember { mutableStateOf(objectifExistant?.titre ?: "") }
+    var description by remember { mutableStateOf(objectifExistant?.description ?: "") }
+    var emoji by remember { mutableStateOf(objectifExistant?.emoji ?: "🎯") }
 
     Column(
         modifier = Modifier
@@ -209,7 +231,7 @@ fun AjoutObjectifScreen(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            "Créer un objectif",
+            if (objectifExistant == null) "Créer un objectif" else "Modifier l'objectif",
             color = Color.White,
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold
@@ -219,7 +241,7 @@ fun AjoutObjectifScreen(
         OutlinedTextField(
             value = emoji,
             onValueChange = { emoji = it },
-            label = { Text("Sélectionne un émoji") },
+            label = { Text("Sélectionne un émoji", color = Color.White.copy(0.7f)) },
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
             colors = OutlinedTextFieldDefaults.colors(
@@ -233,7 +255,7 @@ fun AjoutObjectifScreen(
         OutlinedTextField(
             value = titre,
             onValueChange = { titre = it },
-            label = { Text("Titre") },
+            label = { Text("Titre", color = Color.White.copy(0.7f)) },
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
             colors = OutlinedTextFieldDefaults.colors(
@@ -247,7 +269,7 @@ fun AjoutObjectifScreen(
         OutlinedTextField(
             value = description,
             onValueChange = { description = it },
-            label = { Text("Description") },
+            label = { Text("Description", color = Color.White.copy(0.7f)) },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(120.dp),
@@ -273,7 +295,7 @@ fun AjoutObjectifScreen(
                 colors = ButtonDefaults.buttonColors(containerColor = FlamePurple),
                 shape = RoundedCornerShape(28.dp)
             ) {
-                Text("Créer l'objectif")
+                Text(if (objectifExistant == null) "Créer l'objectif" else "Enregistrer")
             }
             Button(
                 onClick = onBack,

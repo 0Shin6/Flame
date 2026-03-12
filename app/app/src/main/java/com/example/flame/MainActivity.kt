@@ -196,9 +196,22 @@ class MainActivity : ComponentActivity() {
                                             onNavigateToDetail = { obj -> navController.navigate("detail_objectif/${obj.id}") }
                                         )
                                     }
-                                    composable("ajout_objectif") {
+                                    composable("ajout_objectif?id={id}", arguments = listOf(navArgument("id") { nullable = true })) { bse ->
+                                        val idStr = bse.arguments?.getString("id")
+                                        val id = idStr?.toLongOrNull()
+                                        val exist = if (id != null) objectifs.find { it.id == id } else null
+                                        
                                         AjoutObjectifScreen(
-                                            onSave = { tit, desc, emj -> objectifs.add(Objectif(titre = tit, description = desc, emoji = emj)); navController.popBackStack() },
+                                            objectifExistant = exist,
+                                            onSave = { tit, desc, emj -> 
+                                                if (exist != null) {
+                                                    val idx = objectifs.indexOfFirst { it.id == exist.id }
+                                                    if (idx != -1) objectifs[idx] = exist.copy(titre = tit, description = desc, emoji = emj)
+                                                } else {
+                                                    objectifs.add(Objectif(titre = tit, description = desc, emoji = emj))
+                                                }
+                                                navController.popBackStack()
+                                            },
                                             onBack = { navController.popBackStack() }
                                         )
                                     }
@@ -213,6 +226,14 @@ class MainActivity : ComponentActivity() {
                                                 objectif = obj,
                                                 taches = taches.filter { it.objectifId == obj.id }.sortedWith(compareByDescending<Tache> { it.priorite.valeur }.thenBy { it.dateDebut }),
                                                 onBack = { navController.popBackStack() },
+                                                onDelete = {
+                                                    objectifs.removeIf { it.id == obj.id }
+                                                    taches.indices.forEach { i -> 
+                                                        if (taches[i].objectifId == obj.id) taches[i] = taches[i].copy(objectifId = null)
+                                                    }
+                                                    navController.popBackStack()
+                                                },
+                                                onEdit = { navController.navigate("ajout_objectif?id=${obj.id}") },
                                                 onToggleEtat = { t ->
                                                     val idx = taches.indexOfFirst { it.id == t.id }
                                                     if (idx != -1) {
