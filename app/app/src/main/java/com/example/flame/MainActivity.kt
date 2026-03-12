@@ -150,6 +150,29 @@ class MainActivity : ComponentActivity() {
 
                         var showFlameEffect by remember { mutableStateOf(false) }
 
+                        val onToggleEtat: (Tache) -> Unit = { t ->
+                            val idx = taches.indexOfFirst { it.id == t.id }
+                            if (idx != -1) {
+                                val oldT = taches[idx]
+                                val next = if (oldT.etat == EtatTache.FAIT) EtatTache.A_FAIRE else EtatTache.FAIT
+                                taches[idx] = oldT.copy(etat = next)
+                                if (next == EtatTache.FAIT) {
+                                    showFlameEffect = true
+                                    vibrer(this@MainActivity)
+                                    if (oldT.periodicite != Periodicite.AUCUNE) {
+                                        val nT = oldT.copy(
+                                            id = System.currentTimeMillis(),
+                                            dateDebut = getNextDate(oldT.dateDebut, oldT.periodicite),
+                                            dateFin = getNextDate(oldT.dateFin, oldT.periodicite),
+                                            etat = EtatTache.A_FAIRE
+                                        )
+                                        taches.add(nT)
+                                        programmerNotifications(this@MainActivity, nT)
+                                    }
+                                }
+                            }
+                        }
+
                         Scaffold(
                             bottomBar = { NavBar(navController) },
                             containerColor = FlameBackground
@@ -160,14 +183,7 @@ class MainActivity : ComponentActivity() {
                                         key(ticker) {
                                             ListeTachesScreen(
                                                 taches = taches.toList().sortedWith(compareByDescending<Tache> { it.priorite.valeur }.thenBy { it.dateDebut }),
-                                                onToggleEtat = { t ->
-                                                    val idx = taches.indexOfFirst { it.id == t.id }
-                                                    if (idx != -1) {
-                                                        val next = if (taches[idx].etat == EtatTache.FAIT) EtatTache.A_FAIRE else EtatTache.FAIT
-                                                        taches[idx] = taches[idx].copy(etat = next)
-                                                        if (next == EtatTache.FAIT) { showFlameEffect = true; vibrer(this@MainActivity) }
-                                                    }
-                                                },
+                                                onToggleEtat = onToggleEtat,
                                                 onDeleteTache = { t -> annulerNotifications(this@MainActivity, t); taches.removeIf { it.id == t.id } },
                                                 onNavigateToEdit = { t -> navController.navigate("ajout?index=${taches.indexOfFirst { it.id == t.id }}") },
                                                 onNavigateToAdd = { navController.navigate("ajout") }
@@ -177,14 +193,7 @@ class MainActivity : ComponentActivity() {
                                     composable("calendrier") {
                                         CalendrierScreen(
                                             taches = taches.toList(),
-                                            onToggleEtat = { t ->
-                                                val idx = taches.indexOfFirst { it.id == t.id }
-                                                if (idx != -1) {
-                                                    val next = if (taches[idx].etat == EtatTache.FAIT) EtatTache.A_FAIRE else EtatTache.FAIT
-                                                    taches[idx] = taches[idx].copy(etat = next)
-                                                    if (next == EtatTache.FAIT) { showFlameEffect = true; vibrer(this@MainActivity) }
-                                                }
-                                            },
+                                            onToggleEtat = onToggleEtat,
                                             onNavigateToEdit = { t -> navController.navigate("ajout?index=${taches.indexOfFirst { it.id == t.id }}") }
                                         )
                                     }
@@ -234,14 +243,7 @@ class MainActivity : ComponentActivity() {
                                                     navController.popBackStack()
                                                 },
                                                 onEdit = { navController.navigate("ajout_objectif?id=${obj.id}") },
-                                                onToggleEtat = { t ->
-                                                    val idx = taches.indexOfFirst { it.id == t.id }
-                                                    if (idx != -1) {
-                                                        val next = if (taches[idx].etat == EtatTache.FAIT) EtatTache.A_FAIRE else EtatTache.FAIT
-                                                        taches[idx] = taches[idx].copy(etat = next)
-                                                        if (next == EtatTache.FAIT) { showFlameEffect = true; vibrer(this@MainActivity) }
-                                                    }
-                                                }
+                                                onToggleEtat = onToggleEtat
                                             )
                                         }
                                     }
@@ -312,4 +314,15 @@ fun annulerNotifications(context: Context, tache: Tache) {
     val intent = Intent(context, ReminderReceiver::class.java)
     val pi = PendingIntent.getBroadcast(context, tache.id.toInt(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     alarmManager.cancel(pi)
+}
+
+fun getNextDate(ts: Long, p: Periodicite): Long {
+    val c = Calendar.getInstance().apply { timeInMillis = ts }
+    when(p) {
+        Periodicite.QUOTIDIEN -> c.add(Calendar.DAY_OF_YEAR, 1)
+        Periodicite.HEBDOMADAIRE -> c.add(Calendar.WEEK_OF_YEAR, 1)
+        Periodicite.MENSUEL -> c.add(Calendar.MONTH, 1)
+        else -> {}
+    }
+    return c.timeInMillis
 }

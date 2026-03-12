@@ -198,6 +198,7 @@ fun AjoutTacheScreen(
     var objectifIdSelectionne by remember { mutableStateOf(tacheExistante?.objectifId) }
     
     var menuRappelOuvert by remember { mutableStateOf(false) }
+    var menuPerioOuvert by remember { mutableStateOf(false) }
     var menuObjOuvert by remember { mutableStateOf(false) }
 
     val calDebut = remember { Calendar.getInstance().apply { if (tacheExistante != null) timeInMillis = tacheExistante.dateDebut } }
@@ -308,6 +309,14 @@ fun AjoutTacheScreen(
                     DropdownMenu(expanded = menuRappelOuvert, onDismissRequest = { menuRappelOuvert = false }, modifier = Modifier.background(FlameCard)) {
                         listOf(null, 5, 15, 30, 60).forEach { mins ->
                             DropdownMenuItem(text = { Text(mins?.let { "$it mn avant" } ?: "Aucun", color = Color.White) }, onClick = { rappelSelectionne = mins; menuRappelOuvert = false })
+                        }
+                    }
+                }
+                Box {
+                    LignePicker(Icons.Default.Repeat, "Répéter", perioSelectionnee.name.lowercase().replaceFirstChar { it.uppercase() }) { menuPerioOuvert = true }
+                    DropdownMenu(expanded = menuPerioOuvert, onDismissRequest = { menuPerioOuvert = false }, modifier = Modifier.background(FlameCard)) {
+                        Periodicite.entries.forEach { p ->
+                            DropdownMenuItem(text = { Text(p.name.lowercase().replaceFirstChar { it.uppercase() }, color = Color.White) }, onClick = { perioSelectionnee = p; menuPerioOuvert = false })
                         }
                     }
                 }
