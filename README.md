@@ -22,8 +22,8 @@
 - **Splash Screen (Loading)** : Introduction fluide au lancement de l'application.
 - **Effet Flame** : Animation de flammes montantes lors de la validation d'une tâche pour célébrer la réussite.
 - **Notifications & Rappels** : Rappels programmables (5mn, 15mn, 30mn, 1h avant) pour ne jamais rien oublier.
-- **Retour Haptique** : Vibration lors de la complétion d'une tâche.
-- **Design Adaptatif** : Icône d'application personnalisée avec le logo Flame.
+- **Retour Haptique** : Vibration lorsqu'une tâche est valid".
+- **Design Adaptatif** : Icône d'application personnalisée avec un logo.
 
 ## 🛠️ Comparatif Technique
 
