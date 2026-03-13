@@ -1,4 +1,4 @@
-# Flame - To-Do list - GRANIER Mathis GB
+# Flame - To-Do list - GRANIER Mathis G5B
 
 
 ### 1. Gestion des Tâches
@@ -18,11 +18,11 @@
 - **Vue Calendrier** : Visualisation globale des tâches planifiées.
 - **Filtrage** : Filtrer les tâches par état.
 
-### 4. Expérience Utilisateur (UX)
-- **Splash Screen (Loading)** : Introduction fluide au lancement de l'application.
+### 4. Expérience Utilisateur
+- **Loading screen** :Affichage au lancement de l'application.
 - **Effet Flame** : Animation de flammes montantes lors de la validation d'une tâche pour célébrer la réussite.
-- **Notifications & Rappels** : Rappels programmables (5mn, 15mn, 30mn, 1h avant) pour ne jamais rien oublier.
-- **Retour Haptique** : Vibration lorsqu'une tâche est valid".
+- **Notifications & Rappels** : Rappels programmables pour ne jamais rien oublier.
+- **Retour Haptique** : Vibration lorsqu'une tâche est validé.
 - **Design Adaptatif** : Icône d'application personnalisée avec un logo.
 
 ## 🛠️ Comparatif Technique
