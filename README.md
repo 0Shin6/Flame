@@ -25,7 +25,7 @@
 - **Retour Haptique** : Vibration lorsqu'une tâche est validé.
 - **Design Adaptatif** : Icône d'application personnalisée avec un logo.
 
-## 🛠️ Comparatif Technique
+## Comparatif Technique
 
 | Type | Implémentation | Avantages |
 | :--- | :--- | :--- |
