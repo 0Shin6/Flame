@@ -1,5 +1,6 @@
 # Flame - To-Do list - GRANIER Mathis G5B
 
+![Logo Flame](logo.svg)
 
 ### 1. Gestion des Tâches
 - **Création et Edition** : Ajouter des tâches avec titre, description, image, date et plage horaire.
